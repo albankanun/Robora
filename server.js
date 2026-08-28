@@ -27,7 +27,7 @@ const GEMINI_WS =
   `?key=${GEMINI_KEY}`;
 const GEMINI_REST =
   "https://generativelanguage.googleapis.com/v1beta/models/" +
-  `${AGENT.textModel}:generateContent?key=${GEMINI_KEY}`;
+  `${AGENT.textModel}:generateContent`;
 
 const app = express();
 app.use(express.json());
@@ -99,7 +99,8 @@ app.post("/api/chat", async (req, res) => {
     let reply = "";
     for (let hop = 0; hop < 5; hop++) {
       const r = await fetch(GEMINI_REST, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": GEMINI_KEY },
         body: JSON.stringify(body),
       });
       const data = await r.json();

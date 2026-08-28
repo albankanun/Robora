@@ -92,8 +92,8 @@ const POLICIES = {
 const AGENT = {
   name: "Rina",                       // the assistant's name
   voice: "Aoede",                     // Gemini Live voice (Kore/Leda/Aoede/Puck/Charon…)
-  model: "gemini-2.0-flash-live-001", // Gemini Live model for speech-to-speech
-  textModel: "gemini-2.0-flash",      // model for the text chat widget
+  model: "gemini-2.5-flash-native-audio-preview-12-2025", // Gemini Live model for speech-to-speech
+  textModel: "gemini-3.6-flash",      // model for the text chat widget
 };
 
 // ----------------------------------------------------------------------------
