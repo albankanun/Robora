@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Robora — Chat with Rina</title>
+<style>
+  :root{--ink:#0C1222;--panel:#111A30;--cyan:#2BD9C7;--teal:#0FA79A;--cloud:#F1F4F7;--slate:#8B98AB;--line:rgba(139,152,171,.18)}
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1200px 600px at 50% -10%,#16203A,#0C1222);color:var(--cloud);font-family:Inter,system-ui,sans-serif;height:100vh;display:flex;align-items:center;justify-content:center;padding:16px}
+  .chat{background:var(--panel);border:1px solid var(--line);border-radius:22px;max-width:440px;width:100%;height:min(680px,92vh);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.4)}
+  .head{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+  .ring{width:26px;height:26px}
+  .head h1{font-family:'Space Grotesk',sans-serif;font-weight:500;font-size:18px;margin:0}
+  .head .st{margin-left:auto;font-size:12px;color:var(--slate)}
+  .head a{color:var(--cyan);text-decoration:none;font-size:12.5px}
+  .msgs{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:12px}
+  .b{max-width:82%;padding:11px 15px;border-radius:16px;font-size:14.5px;line-height:1.5;white-space:pre-wrap;word-wrap:break-word}
+  .b.rina{background:#16203A;border:1px solid var(--line);align-self:flex-start;border-bottom-left-radius:5px}
+  .b.me{background:var(--cyan);color:var(--ink);align-self:flex-end;border-bottom-right-radius:5px}
+  .b.rina strong{color:var(--cyan)}
+  .typing{align-self:flex-start;color:var(--slate);font-size:13px;padding:4px 6px}
+  .in{border-top:1px solid var(--line);padding:14px;display:flex;gap:10px}
+  .in input{flex:1;background:var(--ink);border:1px solid var(--line);border-radius:999px;padding:12px 16px;color:var(--cloud);font-size:14.5px;font-family:inherit}
+  .in input:focus{outline:none;border-color:var(--cyan)}
+  .in button{background:var(--cyan);color:var(--ink);border:none;border-radius:999px;width:44px;height:44px;font-size:18px;cursor:pointer}
+  .in button:disabled{opacity:.5}
+</style>
+</head>
+<body>
+  <div class="chat">
+    <div class="head">
+      <svg class="ring" viewBox="0 0 52 52"><circle cx="26" cy="26" r="18" fill="none" stroke="var(--cyan)" stroke-width="5.5" stroke-linecap="round" pathLength="100" stroke-dasharray="74 26"/><circle cx="38.3" cy="12.9" r="3.6" fill="var(--cyan)"/></svg>
+      <h1>Rina · Robora</h1>
+      <span class="st"><a href="/">🎙 Voice</a></span>
+    </div>
+    <div class="msgs" id="msgs"></div>
+    <div class="in">
+      <input id="inp" placeholder="Ask about a product or pre-order…" autocomplete="off">
+      <button id="send">→</button>
+    </div>
+  </div>
+<script>
+const msgs=document.getElementById('msgs'), inp=document.getElementById('inp'), send=document.getElementById('send');
+let history=[];
+function md(t){ return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>'); }
+function add(who,txt){ const d=document.createElement('div'); d.className='b '+who; d.innerHTML=md(txt); msgs.appendChild(d); msgs.scrollTop=msgs.scrollHeight; return d; }
+function typing(){ const d=document.createElement('div'); d.className='typing'; d.textContent='Rina is typing…'; d.id='typing'; msgs.appendChild(d); msgs.scrollTop=msgs.scrollHeight; }
+function untyping(){ const t=document.getElementById('typing'); if(t)t.remove(); }
+
+add('rina','Hi! I\u2019m Rina from Robora. 👋 I can tell you about our cleaning robots and help you pre-order at 20% off. What are you looking for? (You can write in English, Shqip, Deutsch or Italiano.)');
+
+async function submit(){
+  const text=inp.value.trim(); if(!text) return;
+  add('me',text); inp.value=''; send.disabled=true; typing();
+  try{
+    const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({history,message:text})});
+    const d=await r.json(); untyping();
+    const reply=d.reply||d.error||'Sorry, something went wrong.';
+    add('rina',reply);
+    history.push({role:'user',text}); history.push({role:'model',text:reply});
+    if(history.length>20) history=history.slice(-20);
+  }catch(e){ untyping(); add('rina','Sorry — I couldn\u2019t reach the server. Please try again.'); }
+  send.disabled=false; inp.focus();
+}
+send.onclick=submit;
+inp.addEventListener('keydown',e=>{ if(e.key==='Enter') submit(); });
+inp.focus();
+</script>
+</body>
+</html>

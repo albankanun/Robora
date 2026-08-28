@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Robora — Talk to Rina</title>
+<style>
+  :root{--ink:#0C1222;--panel:#111A30;--cyan:#2BD9C7;--teal:#0FA79A;--cloud:#F1F4F7;--slate:#8B98AB;--line:rgba(139,152,171,.18)}
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1200px 600px at 50% -10%,#16203A,#0C1222);color:var(--cloud);font-family:Inter,system-ui,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:24px;max-width:440px;width:100%;padding:36px;text-align:center;box-shadow:0 24px 80px rgba(0,0,0,.4)}
+  .brand{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:6px}
+  .ring{width:30px;height:30px}
+  .brand h1{font-family:'Space Grotesk',Inter,sans-serif;font-weight:500;font-size:24px;margin:0;letter-spacing:.4px}
+  .tag{color:var(--slate);font-size:12.5px;margin:0 0 26px;font-family:'Space Grotesk',sans-serif}
+  .orb{width:150px;height:150px;margin:8px auto 22px;border-radius:50%;background:radial-gradient(circle at 50% 40%,rgba(43,217,199,.25),rgba(43,217,199,.04));display:flex;align-items:center;justify-content:center;position:relative;transition:transform .2s}
+  .orb::before{content:"";position:absolute;inset:0;border-radius:50%;border:2px solid rgba(43,217,199,.35)}
+  .orb.live::before{animation:pulse 1.4s ease-out infinite}
+  @keyframes pulse{0%{transform:scale(1);opacity:.8}100%{transform:scale(1.5);opacity:0}}
+  .orb .core{width:70px;height:70px;border-radius:50%;background:linear-gradient(135deg,var(--cyan),var(--teal));transition:transform .12s}
+  h2{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:20px;margin:0 0 4px}
+  .sub{color:var(--slate);font-size:14px;margin:0 0 24px;line-height:1.5}
+  button{border:none;border-radius:999px;padding:15px 30px;font-family:'Space Grotesk',sans-serif;font-weight:500;font-size:16px;cursor:pointer}
+  .start{background:var(--cyan);color:var(--ink)}
+  .stop{background:transparent;color:var(--cloud);border:1px solid var(--line)}
+  .status{margin-top:18px;color:var(--slate);font-size:13px;min-height:1.3em}
+  .cc{margin-top:20px;font-size:12.5px;color:var(--slate)}
+  .cc a{color:var(--cyan);text-decoration:none}
+  .log{margin-top:18px;text-align:left;max-height:160px;overflow-y:auto;font-size:13px;color:#C6CFDB;line-height:1.5}
+  .log p{margin:6px 0}.log .me{color:var(--slate)}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand">
+      <svg class="ring" viewBox="0 0 52 52"><circle cx="26" cy="26" r="18" fill="none" stroke="var(--cyan)" stroke-width="5.5" stroke-linecap="round" pathLength="100" stroke-dasharray="74 26"/><circle cx="38.3" cy="12.9" r="3.6" fill="var(--cyan)"/></svg>
+      <h1>robora</h1>
+    </div>
+    <p class="tag">engineered for tomorrow</p>
+    <div class="orb" id="orb"><div class="core" id="core"></div></div>
+    <h2>Talk to Rina</h2>
+    <p class="sub">Ask about our cleaning robots or place a pre-order at 20% off. Rina speaks English, Shqip, Deutsch and Italiano.</p>
+    <button class="start" id="btn">Start talking</button>
+    <div class="status" id="status"></div>
+    <div class="log" id="log"></div>
+    <p class="cc">Prefer typing? <a href="/chat">Open the chat →</a></p>
+  </div>
+<script>
+const btn=document.getElementById('btn'), statusEl=document.getElementById('status'),
+      orb=document.getElementById('orb'), core=document.getElementById('core'), log=document.getElementById('log');
+let ws, audioCtx, micStream, procNode, playCtx, playHead=0, running=false;
+
+function say(t){ statusEl.textContent=t; }
+function addLog(who,txt){ const p=document.createElement('p'); p.className=who; p.textContent=(who==='me'?'You: ':'Rina: ')+txt; log.appendChild(p); log.scrollTop=log.scrollHeight; }
+
+async function start(){
+  running=true; btn.textContent='Stop'; btn.className='stop'; say('Connecting…'); orb.classList.add('live');
+  const proto=location.protocol==='https:'?'wss':'ws';
+  ws=new WebSocket(`${proto}://${location.host}/ws/voice`);
+  ws.onopen=()=>say('Say hello 👋');
+  ws.onmessage=async ev=>{
+    const m=JSON.parse(ev.data);
+    if(m.type==='ready') say('Listening…');
+    else if(m.type==='audio') playPCM(m.data);
+    else if(m.type==='text') addLog('rina',m.text);
+    else if(m.type==='tool') say('…working on it');
+    else if(m.type==='turn_complete') say('Listening…');
+  };
+  ws.onclose=()=>{ if(running) stop(); };
+  await startMic();
+}
+
+async function startMic(){
+  audioCtx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:16000});
+  micStream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true}});
+  const src=audioCtx.createMediaStreamSource(micStream);
+  procNode=audioCtx.createScriptProcessor(4096,1,1);
+  src.connect(procNode); procNode.connect(audioCtx.destination);
+  procNode.onaudioprocess=e=>{
+    if(!ws||ws.readyState!==1) return;
+    const input=e.inputBuffer.getChannelData(0);
+    const pcm=new Int16Array(input.length);
+    let peak=0;
+    for(let i=0;i<input.length;i++){ const s=Math.max(-1,Math.min(1,input[i])); pcm[i]=s<0?s*0x8000:s*0x7FFF; peak=Math.max(peak,Math.abs(s)); }
+    core.style.transform=`scale(${1+peak*0.5})`;
+    ws.send(JSON.stringify({type:'audio',data:base64(pcm.buffer)}));
+  };
+}
+
+function playPCM(b64){
+  if(!playCtx){ playCtx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:24000}); playHead=0; }
+  const bytes=atob(b64), buf=new Int16Array(bytes.length/2);
+  for(let i=0;i<buf.length;i++){ buf[i]=(bytes.charCodeAt(i*2)|(bytes.charCodeAt(i*2+1)<<8)); if(buf[i]>32767)buf[i]-=65536; }
+  const f32=new Float32Array(buf.length);
+  for(let i=0;i<buf.length;i++) f32[i]=buf[i]/32768;
+  const ab=playCtx.createBuffer(1,f32.length,24000); ab.getChannelData(0).set(f32);
+  const s=playCtx.createBufferSource(); s.buffer=ab; s.connect(playCtx.destination);
+  const now=playCtx.currentTime; if(playHead<now) playHead=now; s.start(playHead); playHead+=ab.duration;
+}
+
+function base64(buf){ let bin='',b=new Uint8Array(buf); for(let i=0;i<b.length;i++) bin+=String.fromCharCode(b[i]); return btoa(bin); }
+
+function stop(){
+  running=false; btn.textContent='Start talking'; btn.className='start'; say(''); orb.classList.remove('live'); core.style.transform='scale(1)';
+  try{procNode&&procNode.disconnect();}catch{} try{micStream&&micStream.getTracks().forEach(t=>t.stop());}catch{}
+  try{audioCtx&&audioCtx.close();}catch{} try{ws&&ws.close();}catch{}
+}
+
+btn.onclick=()=> running?stop():start();
+</script>
+</body>
+</html>
