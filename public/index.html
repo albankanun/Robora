@@ -93,7 +93,17 @@ ws = new WebSocket(geminiUrl);
   say('Connecting to Rina…');
 };
   ws.onmessage = async (ev) => {
-  const m = JSON.parse(ev.data);
+  let raw = ev.data;
+
+  if (raw instanceof Blob) {
+    raw = await raw.text();
+  } else if (raw instanceof ArrayBuffer) {
+    raw = new TextDecoder().decode(raw);
+  }
+
+  const m = JSON.parse(raw);
+
+  console.log("GEMINI MESSAGE:", m);
 
   console.log("GEMINI MESSAGE:", m);
 
