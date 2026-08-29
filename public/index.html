@@ -71,14 +71,11 @@ const geminiUrl =
 
 ws = new WebSocket(geminiUrl);
   ws.onopen = () => {
-
   ws.send(JSON.stringify({
     setup: {
       model: `models/${model}`,
-
       generationConfig: {
         responseModalities: ["AUDIO"],
-
         speechConfig: {
           voiceConfig: {
             prebuiltVoiceConfig: {
@@ -95,8 +92,40 @@ ws = new WebSocket(geminiUrl);
 
   say('Connecting to Rina…');
 };
-  ws.onmessage=async ev=>{
-    const m = JSON.parse(ev.data);
+  ws.onmessage = async (ev) => {
+  const m = JSON.parse(ev.data);
+
+  console.log("GEMINI MESSAGE:", m);
+
+  // Gemini is ready — only now start sending microphone audio
+  if (m.setupComplete) {
+    geminiReady = true;
+    say("Listening…");
+    return;
+  }
+
+  // Gemini voice/text response
+  const parts = m.serverContent?.modelTurn?.parts || [];
+
+  for (const part of parts) {
+    if (part.inlineData?.data) {
+      playPCM(part.inlineData.data);
+    }
+
+    if (part.text) {
+      addLog("rina", part.text);
+    }
+  }
+
+  // Transcription of what Rina says
+  if (m.serverContent?.outputTranscription?.text) {
+    addLog("rina", m.serverContent.outputTranscription.text);
+  }
+
+  if (m.serverContent?.turnComplete) {
+    say("Listening…");
+  }
+};
 
 if (m.setupComplete) {
   geminiReady = true;
