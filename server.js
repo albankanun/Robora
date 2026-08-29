@@ -31,6 +31,15 @@ const GEMINI_REST =
 
 const app = express();
 app.use(express.json());
+
+// Allow robora.eu (and its subdomains) to embed the chat widget in an iframe.
+app.use((req, res, next) => {
+  res.setHeader(
+    "Content-Security-Policy",
+    "frame-ancestors 'self' https://robora.eu https://www.robora.eu"
+  );
+  next();
+});
 // --- Voice suspension routing (must be BEFORE static so it wins) ---
 if (!AGENT.voiceEnabled) {
   app.get(["/", "/index.html", "/voice", "/voice.html"], (_req, res) => {
