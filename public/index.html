@@ -98,16 +98,6 @@ ws = new WebSocket(geminiUrl);
   console.log("GEMINI MESSAGE:", m);
 
   // Gemini is ready — only now start sending microphone audio
-  if (m.setupComplete) {
-    geminiReady = true;
-    say("Listening…");
-    return;
-  }
-};
-ws.onerror = e => {
-  console.error("VOICE WS ERROR:", e);
-};
-
 ws.onclose = e => {
   console.error("VOICE WS CLOSED:", e.code, e.reason);
   geminiReady = false;
