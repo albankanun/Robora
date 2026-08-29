@@ -234,7 +234,60 @@ server.on("upgrade", (req, socket, head) => {
     socket.destroy();
   }
 });
+app.get("/api/live-token", async (_req, res) => {
+  try {
+    const apiKey = process.env.GEMINI_API_KEY;
 
+    if (!apiKey) {
+      return res.status(500).json({ error: "Gemini API key missing" });
+    }
+
+    const model =
+      process.env.GEMINI_LIVE_MODEL ||
+      "gemini-3.1-flash-live-preview";
+
+    const now = Date.now();
+
+    const tokenResponse = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/auth_tokens",
+      {
+        method: "POST",
+        headers: {
+          "x-goog-api-key": apiKey,
+          "Content-Type": "application/json",
+        },
+
+        body: JSON.stringify({
+          uses: 1,
+
+          expireTime: new Date(
+            now + 30 * 60 * 1000
+          ).toISOString(),
+
+          newSessionExpireTime: new Date(
+            now + 60 * 1000
+          ).toISOString(),
+        }),
+      }
+    );
+
+    const data = await tokenResponse.json();
+
+    if (!tokenResponse.ok) {
+      console.error("Token error:", data);
+      return res.status(tokenResponse.status).json(data);
+    }
+
+    res.json({
+      token: data.name,
+      model,
+    });
+
+  } catch (err) {
+    console.error("Live token error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
 server.listen(PORT, () => {
   console.log(`\n\uD83E\uDD16  ${BUSINESS.name} virtual assistant "${AGENT.name}"`);
   console.log(`   Voice widget:    http://localhost:${PORT}/`);

@@ -55,18 +55,87 @@ function say(t){ statusEl.textContent=t; }
 function addLog(who,txt){ const p=document.createElement('p'); p.className=who; p.textContent=(who==='me'?'You: ':'Rina: ')+txt; log.appendChild(p); log.scrollTop=log.scrollHeight; }
 
 async function start(){
-  running=true; btn.textContent='Stop'; btn.className='stop'; say('Connecting…'); orb.classList.add('live');
-  const proto=location.protocol==='https:'?'wss':'ws';
+  const tokenRes = await fetch('/api/live-token');
+
+if (!tokenRes.ok) {
+  throw new Error('Could not create Gemini Live token');
+}
+
+const { token, model } = await tokenRes.json();
+
+const geminiUrl =
+  "wss://generativelanguage.googleapis.com/ws/" +
+  "google.ai.generativelanguage.v1beta.GenerativeService." +
+  "BidiGenerateContentConstrained" +
+  `?access_token=${encodeURIComponent(token)}`;
+
+ws = new WebSocket(geminiUrl);
   ws=new WebSocket(`${proto}://${location.host}/ws/voice`);
-  ws.onopen=()=>say('Say hello 👋');
+  ws.onopen = () => {
+
+  ws.send(JSON.stringify({
+    setup: {
+      model: `models/${model}`,
+
+      generationConfig: {
+        responseModalities: ["AUDIO"],
+
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: {
+              voiceName: "Leda"
+            }
+          }
+        }
+      },
+
+      inputAudioTranscription: {},
+      outputAudioTranscription: {}
+    }
+  }));
+
+  say('Connecting to Rina…');
+};
   ws.onmessage=async ev=>{
-    const m=JSON.parse(ev.data);
-    if(m.type==='ready') {geminiReady = true; say('Listening…');}
-    else if(m.type==='audio') playPCM(m.data);
-    else if(m.type==='text') addLog('rina',m.text);
-    else if(m.type==='tool') say('…working on it');
-    else if(m.type==='turn_complete') say('Listening…');
-  };
+    const m = JSON.parse(ev.data);
+
+if (m.setupComplete) {
+  geminiReady = true;
+  say('Listening…');
+  return;
+}
+
+const parts =
+  m.serverContent?.modelTurn?.parts || [];
+
+for (const part of parts) {
+
+  if (part.inlineData?.data) {
+    playPCM(part.inlineData.data);
+  }
+
+  if (part.text) {
+    addLog('rina', part.text);
+  }
+}
+
+if (m.serverContent?.inputTranscription?.text) {
+  console.log(
+    "You:",
+    m.serverContent.inputTranscription.text
+  );
+}
+
+if (m.serverContent?.outputTranscription?.text) {
+  addLog(
+    'rina',
+    m.serverContent.outputTranscription.text
+  );
+}
+
+if (m.serverContent?.turnComplete) {
+  say('Listening…');
+}
   ws.onerror = e => {
   console.error("VOICE WS ERROR:", e);
 };
@@ -83,7 +152,7 @@ async function startMic(){
   audioCtx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:16000});
   micStream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true}});
   const src=audioCtx.createMediaStreamSource(micStream);
-  procNode=audioCtx.createScriptProcessor(4096,1,1);
+  procNode=audioCtx.createScriptProcessor(1024,1,1);
   src.connect(procNode); procNode.connect(audioCtx.destination);
   procNode.onaudioprocess=e=>{
     if(!ws || ws.readyState !== WebSocket.OPEN || !geminiReady) return;
@@ -92,9 +161,10 @@ async function startMic(){
     let peak=0;
     for(let i=0;i<input.length;i++){ const s=Math.max(-1,Math.min(1,input[i])); pcm[i]=s<0?s*0x8000:s*0x7FFF; peak=Math.max(peak,Math.abs(s)); }
     core.style.transform=`scale(${1+peak*0.5})`;
-    ws.send(JSON.stringify({type:'audio',data:base64(pcm.buffer)}));
-  };
-}
+    ws.send(JSON.stringify({realtimeInput: {audio: { mimeType: "audio/pcm;rate=16000",data:base64(pcm.buffer)
+   }
+  }
+}));
 
 function playPCM(b64){
   if(!playCtx){ playCtx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:24000}); playHead=0; }
