@@ -89,7 +89,9 @@ const POLICIES = {
 // ----------------------------------------------------------------------------
 // AGENT — persona + model settings.
 // ----------------------------------------------------------------------------
+// Set voiceEnabled to true to re-activate the voice widget later.
 const AGENT = {
+  voiceEnabled: false,   // <-- voice suspended; chat only. Flip to true to bring voice back.
   name: "Rina",                       // the assistant's name
   voice: "Aoede",                     // Gemini Live voice (Kore/Leda/Aoede/Puck/Charon…)
   model: "gemini-2.5-flash-native-audio-preview-12-2025", // Gemini Live model for speech-to-speech
@@ -112,6 +114,9 @@ Help customers understand the products and place PRE-ORDERS. Pre-orders get ${BU
 
 # LANGUAGES
 You are fluent in English, Albanian (Shqip), German (Deutsch) and Italian (Italiano). Detect the language the customer uses and respond in THAT language. If they switch, you switch. Keep the same warmth in every language.
+
+# ALBANIAN TERMINOLOGY (important)
+When speaking Albanian, the word for "pre-order" is "rezervim" (noun) / "rezervo" (verb) — NEVER "porosi paraprake" or "pre-order". For example: "Rezervo tani me 20% zbritje", "Dëshironi ta rezervoni?", "rezervimi juaj". Use "rezervim/rezervo" consistently.
 
 # PRODUCTS (retail → pre-order price)
 ${CATALOG_TEXT}

@@ -31,7 +31,16 @@ const GEMINI_REST =
 
 const app = express();
 app.use(express.json());
-app.use(express.static(path.join(__dirname, "public")));
+// --- Voice suspension routing (must be BEFORE static so it wins) ---
+if (!AGENT.voiceEnabled) {
+  app.get(["/", "/index.html", "/voice", "/voice.html"], (_req, res) => {
+    if (_req.path === "/") return res.sendFile(path.join(__dirname, "public", "chat.html"));
+    return res.redirect("/chat");
+  });
+} else {
+  app.get("/voice", (_req, res) => res.sendFile(path.join(__dirname, "public", "voice.html")));
+}
+app.use(express.static(path.join(__dirname, "public"), { index: AGENT.voiceEnabled ? "index.html" : false }));
 app.get("/chat", (_req, res) => res.sendFile(path.join(__dirname, "public", "chat.html")));
 app.get("/dashboard", (_req, res) => res.sendFile(path.join(__dirname, "public", "dashboard.html")));
 app.get("/api/state", (_req, res) => res.json(db.snapshot()));
@@ -148,6 +157,7 @@ wssDash.on("connection", (ws) => {
 // ===========================================================================
 const wssVoice = new WebSocketServer({ noServer: true });
 wssVoice.on("connection", (client) => {
+  if (!AGENT.voiceEnabled) { client.close(1000, "voice disabled"); return; }
   if (!GEMINI_KEY) { client.close(1011, "no api key"); return; }
   const gem = new WebSocket(GEMINI_WS);
   let gemReady = false;
@@ -238,7 +248,7 @@ server.on("upgrade", (req, socket, head) => {
 
 server.listen(PORT, () => {
   console.log(`\n\uD83E\uDD16  ${BUSINESS.name} virtual assistant "${AGENT.name}"`);
-  console.log(`   Voice widget:    http://localhost:${PORT}/`);
-  console.log(`   Chat widget:     http://localhost:${PORT}/chat`);
+  console.log(`   Chat widget:     http://localhost:${PORT}/  (and /chat)`);
+  console.log(`   Voice widget:    ${AGENT.voiceEnabled ? "http://localhost:"+PORT+"/voice" : "SUSPENDED (set AGENT.voiceEnabled=true to enable)"}`);
   console.log(`   Staff dashboard: http://localhost:${PORT}/dashboard\n`);
 });
