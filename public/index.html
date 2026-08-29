@@ -155,17 +155,6 @@ if (m.serverContent?.inputTranscription?.text) {
     m.serverContent.inputTranscription.text
   );
 }
-
-if (m.serverContent?.outputTranscription?.text) {
-  addLog(
-    'rina',
-    m.serverContent.outputTranscription.text
-  );
-}
-
-if (m.serverContent?.turnComplete) {
-  say('Listening…');
-}
   ws.onerror = e => {
   console.error("VOICE WS ERROR:", e);
 };
