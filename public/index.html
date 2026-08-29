@@ -70,7 +70,6 @@ const geminiUrl =
   `?access_token=${encodeURIComponent(token)}`;
 
 ws = new WebSocket(geminiUrl);
-  ws=new WebSocket(`${proto}://${location.host}/ws/voice`);
   ws.onopen = () => {
 
   ws.send(JSON.stringify({
