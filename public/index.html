@@ -168,7 +168,6 @@ ws.onclose = e => {
 }
 
 async function startMic(){
-};
   audioCtx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:16000});
   micStream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true}});
   const src=audioCtx.createMediaStreamSource(micStream);
