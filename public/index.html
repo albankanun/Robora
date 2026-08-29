@@ -48,7 +48,8 @@
 <script>
 const btn=document.getElementById('btn'), statusEl=document.getElementById('status'),
       orb=document.getElementById('orb'), core=document.getElementById('core'), log=document.getElementById('log');
-let ws, audioCtx, micStream, procNode, playCtx, playHead=0, running=false;
+let ws, audioCtx, micStream, procNode, playCtx, playHead=0, geminiReady = false, running=false;
+
 
 function say(t){ statusEl.textContent=t; }
 function addLog(who,txt){ const p=document.createElement('p'); p.className=who; p.textContent=(who==='me'?'You: ':'Rina: ')+txt; log.appendChild(p); log.scrollTop=log.scrollHeight; }
@@ -60,13 +61,21 @@ async function start(){
   ws.onopen=()=>say('Say hello 👋');
   ws.onmessage=async ev=>{
     const m=JSON.parse(ev.data);
-    if(m.type==='ready') say('Listening…');
+    if(m.type==='ready') {geminiReady = true; say('Listening…');}
     else if(m.type==='audio') playPCM(m.data);
     else if(m.type==='text') addLog('rina',m.text);
     else if(m.type==='tool') say('…working on it');
     else if(m.type==='turn_complete') say('Listening…');
   };
-  ws.onclose=()=>{ if(running) stop(); };
+  ws.onerror = e => {
+  console.error("VOICE WS ERROR:", e);
+};
+
+ws.onclose = e => {
+  console.error("VOICE WS CLOSED:", e.code, e.reason);
+  geminiReady = false;
+  if(running) stop();
+};
   await startMic();
 }
 
@@ -77,7 +86,7 @@ async function startMic(){
   procNode=audioCtx.createScriptProcessor(4096,1,1);
   src.connect(procNode); procNode.connect(audioCtx.destination);
   procNode.onaudioprocess=e=>{
-    if(!ws||ws.readyState!==1) return;
+    if(!ws || ws.readyState !== WebSocket.OPEN || !geminiReady) return;
     const input=e.inputBuffer.getChannelData(0);
     const pcm=new Int16Array(input.length);
     let peak=0;
@@ -101,6 +110,7 @@ function playPCM(b64){
 function base64(buf){ let bin='',b=new Uint8Array(buf); for(let i=0;i<b.length;i++) bin+=String.fromCharCode(b[i]); return btoa(bin); }
 
 function stop(){
+  geminiReady = false;
   running=false; btn.textContent='Start talking'; btn.className='start'; say(''); orb.classList.remove('live'); core.style.transform='scale(1)';
   try{procNode&&procNode.disconnect();}catch{} try{micStream&&micStream.getTracks().forEach(t=>t.stop());}catch{}
   try{audioCtx&&audioCtx.close();}catch{} try{ws&&ws.close();}catch{}
