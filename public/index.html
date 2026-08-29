@@ -179,6 +179,7 @@ ws.onclose = e => {
 }
 
 async function startMic(){
+};
   audioCtx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:16000});
   micStream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true}});
   const src=audioCtx.createMediaStreamSource(micStream);
@@ -191,11 +192,18 @@ async function startMic(){
     let peak=0;
     for(let i=0;i<input.length;i++){ const s=Math.max(-1,Math.min(1,input[i])); pcm[i]=s<0?s*0x8000:s*0x7FFF; peak=Math.max(peak,Math.abs(s)); }
     core.style.transform=`scale(${1+peak*0.5})`;
-    ws.send(JSON.stringify({realtimeInput: {audio: { mimeType: "audio/pcm;rate=16000",data:base64(pcm.buffer)
-   }
+    ws.send(JSON.stringify({
+  realtimeInput: {
+    audio: {
+      mimeType: "audio/pcm;rate=16000",
+      data: base64(pcm.buffer)
+    }
   }
 }));
-};
+
+};  // closes procNode.onaudioprocess
+
+}   // closes startMic()
 
 function playPCM(b64){
   if(!playCtx){ playCtx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:24000}); playHead=0; }
