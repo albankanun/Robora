@@ -80,7 +80,7 @@ function runTool(name, args, channel) {
 // TEXT CHAT — /api/chat  (REST, multi-turn via history in the request)
 // body: { history: [{role:'user'|'model', text:'...'}], message: '...' }
 // ===========================================================================
-app.post("/api/chat", async (req, res) => {
+app.post("/api/chat", async (_req, res) => {
   try {
     const { history = [], message } = req.body || {};
     if (!message) return res.status(400).json({ error: "message required" });
