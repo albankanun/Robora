@@ -70,7 +70,7 @@ const geminiUrl =
   `?access_token=${encodeURIComponent(token)}`;
 
 ws = new WebSocket(geminiUrl);
-  ws.onopen = () => {
+ws.onopen = () => {
   ws.send(JSON.stringify({
     setup: {
       model: `models/${model}`,
@@ -84,15 +84,15 @@ ws = new WebSocket(geminiUrl);
           }
         }
       },
-
       inputAudioTranscription: {},
       outputAudioTranscription: {}
     }
   }));
 
-  say('Connecting to Rina…');
+  say("Connecting to Rina…");
 };
-  ws.onmessage = async (ev) => {
+
+ws.onmessage = async (ev) => {
   let raw = ev.data;
 
   if (raw instanceof Blob) {
@@ -105,16 +105,13 @@ ws = new WebSocket(geminiUrl);
 
   console.log("GEMINI MESSAGE:", m);
 
-  console.log("GEMINI MESSAGE:", m);
+  if (m.setupComplete) {
+    console.log("✅ GEMINI READY");
+    geminiReady = true;
+    say("Listening…");
+    return;
+  }
 
-  // Gemini is ready — only now start sending microphone audio
-ws.onclose = e => {
-  console.error("VOICE WS CLOSED:", e.code, e.reason);
-  geminiReady = false;
-  if (running) stop();
-};
-
-  // Gemini voice/text response
   const parts = m.serverContent?.modelTurn?.parts || [];
 
   for (const part of parts) {
@@ -127,14 +124,16 @@ ws.onclose = e => {
     }
   }
 
-  // Transcription of what Rina says
   if (m.serverContent?.outputTranscription?.text) {
-    addLog("rina", m.serverContent.outputTranscription.text);
+    console.log(
+      "RINA:",
+      m.serverContent.outputTranscription.text
+    );
   }
 
   if (m.serverContent?.turnComplete) {
-    say('Listening…'); 
-}
+    say("Listening…");
+  }
 };
 ws.onerror = e => {
   console.error("VOICE WS ERROR:", e);
