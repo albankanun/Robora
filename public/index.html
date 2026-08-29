@@ -139,36 +139,6 @@ ws.onclose = e => {
 ws.onerror = e => {
   console.error("VOICE WS ERROR:", e);
 };
-if (m.setupComplete) {
-  geminiReady = true;
-  say('Listening…');
-  return;
-}
-
-const parts =
-  m.serverContent?.modelTurn?.parts || [];
-
-for (const part of parts) {
-
-  if (part.inlineData?.data) {
-    playPCM(part.inlineData.data);
-  }
-
-  if (part.text) {
-    addLog('rina', part.text);
-  }
-}
-
-if (m.serverContent?.inputTranscription?.text) {
-  console.log(
-    "You:",
-    m.serverContent.inputTranscription.text
-  );
-}
-  ws.onerror = e => {
-  console.error("VOICE WS ERROR:", e);
-};
-
 ws.onclose = e => {
   console.error("VOICE WS CLOSED:", e.code, e.reason);
   geminiReady = false;
