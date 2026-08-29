@@ -48,89 +48,25 @@
 <script>
 const btn=document.getElementById('btn'), statusEl=document.getElementById('status'),
       orb=document.getElementById('orb'), core=document.getElementById('core'), log=document.getElementById('log');
-let ws, audioCtx, micStream, procNode, playCtx, playHead=0, geminiReady = false, running=false;
-
+let ws, audioCtx, micStream, procNode, playCtx, playHead=0, running=false;
 
 function say(t){ statusEl.textContent=t; }
 function addLog(who,txt){ const p=document.createElement('p'); p.className=who; p.textContent=(who==='me'?'You: ':'Rina: ')+txt; log.appendChild(p); log.scrollTop=log.scrollHeight; }
 
 async function start(){
-  const tokenRes = await fetch('/api/live-token');
-
-if (!tokenRes.ok) {
-  throw new Error('Could not create Gemini Live token');
-}
-
-const { token, model } = await tokenRes.json();
-
-const geminiUrl =
-  "wss://generativelanguage.googleapis.com/ws/" +
-  "google.ai.generativelanguage.v1beta.GenerativeService." +
-  "BidiGenerateContentConstrained" +
-  `?access_token=${encodeURIComponent(token)}`;
-
-ws = new WebSocket(geminiUrl);
-ws.onopen = () => {
-  ws.send(JSON.stringify({
-    setup: {
-      model: `models/${model}`
-    }
-  }));
-
-  say("Connecting to Rina…");
-};
-
-ws.onmessage = async (ev) => {
-  let raw = ev.data;
-
-  if (raw instanceof Blob) {
-    raw = await raw.text();
-  } else if (raw instanceof ArrayBuffer) {
-    raw = new TextDecoder().decode(raw);
-  }
-
-  const m = JSON.parse(raw);
-
-  console.log("GEMINI MESSAGE:", m);
-
-  if (m.setupComplete) {
-    console.log("✅ GEMINI READY");
-    geminiReady = true;
-    say("Listening…");
-    return;
-  }
-
-  const parts = m.serverContent?.modelTurn?.parts || [];
-
-  for (const part of parts) {
-    if (part.inlineData?.data) {
-      playPCM(part.inlineData.data);
-    }
-
-    if (part.text) {
-      addLog("rina", part.text);
-    }
-  }
-
-  if (m.serverContent?.outputTranscription?.text) {
-    console.log(
-      "RINA:",
-      m.serverContent.outputTranscription.text
-    );
-  }
-
-  if (m.serverContent?.turnComplete) {
-    say("Listening…");
-  }
-};
-ws.onerror = e => {
-  console.error("VOICE WS ERROR:", e);
-};
-ws.onclose = e => {
-  console.error("VOICE WS CLOSED:", e.code, e.reason);
-  geminiReady = false;
-  if(running) stop();
-};
+  running=true; btn.textContent='Stop'; btn.className='stop'; say('Connecting…'); orb.classList.add('live');
+  const proto=location.protocol==='https:'?'wss':'ws';
+  ws=new WebSocket(`${proto}://${location.host}/ws/voice`);
+  ws.onopen=()=>say('Say hello 👋');
+  ws.onmessage=async ev=>{
+    const m=JSON.parse(ev.data);
+    if(m.type==='ready') say('Listening…');
+    else if(m.type==='audio') playPCM(m.data);
+    else if(m.type==='text') addLog('rina',m.text);
+    else if(m.type==='tool') say('…working on it');
+    else if(m.type==='turn_complete') say('Listening…');
+  };
+  ws.onclose=()=>{ if(running) stop(); };
   await startMic();
 }
 
@@ -138,27 +74,18 @@ async function startMic(){
   audioCtx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:16000});
   micStream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true}});
   const src=audioCtx.createMediaStreamSource(micStream);
-  procNode=audioCtx.createScriptProcessor(1024,1,1);
+  procNode=audioCtx.createScriptProcessor(4096,1,1);
   src.connect(procNode); procNode.connect(audioCtx.destination);
   procNode.onaudioprocess=e=>{
-    if(!ws || ws.readyState !== WebSocket.OPEN || !geminiReady) return;
+    if(!ws||ws.readyState!==1) return;
     const input=e.inputBuffer.getChannelData(0);
     const pcm=new Int16Array(input.length);
     let peak=0;
     for(let i=0;i<input.length;i++){ const s=Math.max(-1,Math.min(1,input[i])); pcm[i]=s<0?s*0x8000:s*0x7FFF; peak=Math.max(peak,Math.abs(s)); }
     core.style.transform=`scale(${1+peak*0.5})`;
-    ws.send(JSON.stringify({
-  realtimeInput: {
-    audio: {
-      mimeType: "audio/pcm;rate=16000",
-      data: base64(pcm.buffer)
-    }
-  }
-}));
-
-};  // closes procNode.onaudioprocess
-
-}   // closes startMic()
+    ws.send(JSON.stringify({type:'audio',data:base64(pcm.buffer)}));
+  };
+}
 
 function playPCM(b64){
   if(!playCtx){ playCtx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:24000}); playHead=0; }
@@ -174,7 +101,6 @@ function playPCM(b64){
 function base64(buf){ let bin='',b=new Uint8Array(buf); for(let i=0;i<b.length;i++) bin+=String.fromCharCode(b[i]); return btoa(bin); }
 
 function stop(){
-  geminiReady = false;
   running=false; btn.textContent='Start talking'; btn.className='start'; say(''); orb.classList.remove('live'); core.style.transform='scale(1)';
   try{procNode&&procNode.disconnect();}catch{} try{micStream&&micStream.getTracks().forEach(t=>t.stop());}catch{}
   try{audioCtx&&audioCtx.close();}catch{} try{ws&&ws.close();}catch{}

@@ -30,9 +30,6 @@ const GEMINI_REST =
   `${AGENT.textModel}:generateContent`;
 
 const app = express();
-app.get("/dashboard", (_req, res) => {
-  res.sendFile(path.join(__dirname, "..", "public", "dashboard.html"));
-});
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 app.get("/chat", (_req, res) => res.sendFile(path.join(__dirname, "public", "chat.html")));
@@ -95,7 +92,11 @@ app.post("/api/chat", async (req, res) => {
       systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
       contents,
       tools: [{ functionDeclarations: TOOLS }],
-      generationConfig: { temperature: 0.7 },
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: 500,          // sales replies are short — caps latency
+        thinkingConfig: { thinkingLevel: "low" }, // minimise thinking for speed (Gemini 3.x)
+      },
     };
 
     // Tool loop: call model, run any tool calls, feed results back, repeat.
@@ -234,87 +235,7 @@ server.on("upgrade", (req, socket, head) => {
     socket.destroy();
   }
 });
-app.get("/api/live-token", async (_req, res) => {
-  try {
-    const apiKey = process.env.GEMINI_API_KEY;
 
-    if (!apiKey) {
-      return res.status(500).json({ error: "Gemini API key missing" });
-    }
-
-    const model =
-      process.env.GEMINI_LIVE_MODEL ||
-      "gemini-3.1-flash-live-preview";
-
-    const now = Date.now();
-
-    const tokenResponse = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/auth_tokens",
-      {
-        method: "POST",
-        headers: {
-          "x-goog-api-key": apiKey,
-          "Content-Type": "application/json",
-        },
-
-       body: JSON.stringify({
-  uses: 1,
-
-  expireTime: new Date(
-    now + 30 * 60 * 1000
-  ).toISOString(),
-
-  newSessionExpireTime: new Date(
-    now + 60 * 1000
-  ).toISOString(),
-
-  liveConnectConstraints: {
-    model: `models/${model}`,
-
-    config: {
-      responseModalities: ["AUDIO"],
-
-      speechConfig: {
-        voiceConfig: {
-          prebuiltVoiceConfig: {
-            voiceName: "Leda"
-          }
-        }
-      },
-
-      systemInstruction: {
-        parts: [
-          {
-            text: SYSTEM_PROMPT
-          }
-        ]
-      },
-
-      inputAudioTranscription: {},
-      outputAudioTranscription: {}
-    }
-  }
-})
-	}
-	);
-
-    const data = await tokenResponse.json();
-
-    if (!tokenResponse.ok) {
-      console.error("Token error:", data);
-      return res.status(tokenResponse.status).json(data);
-    }
-
-    res.json({
-      token: data.name,
-      model,
-    });
-
-  } catch (err) {
-    console.error("Live token error:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
 server.listen(PORT, () => {
   console.log(`\n\uD83E\uDD16  ${BUSINESS.name} virtual assistant "${AGENT.name}"`);
   console.log(`   Voice widget:    http://localhost:${PORT}/`);
