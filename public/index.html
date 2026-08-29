@@ -123,10 +123,12 @@ ws = new WebSocket(geminiUrl);
   }
 
   if (m.serverContent?.turnComplete) {
-    say("Listening…");
-  }
+    say('Listening…'); 
+}
 };
-
+ws.oneerror = 3 => {
+   console.error("VOICE WS ERROR:",E)
+};
 if (m.setupComplete) {
   geminiReady = true;
   say('Listening…');
@@ -193,6 +195,7 @@ async function startMic(){
    }
   }
 }));
+};
 
 function playPCM(b64){
   if(!playCtx){ playCtx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:24000}); playHead=0; }
