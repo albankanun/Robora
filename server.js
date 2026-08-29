@@ -30,6 +30,9 @@ const GEMINI_REST =
   `${AGENT.textModel}:generateContent`;
 
 const app = express();
+app.get("/dashboard", (_req, res) => {
+  res.sendFile(path.join(__dirname, "..", "public", "dashboard.html"));
+});
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 app.get("/chat", (_req, res) => res.sendFile(path.join(__dirname, "public", "chat.html")));
