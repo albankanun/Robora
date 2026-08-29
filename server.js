@@ -257,19 +257,46 @@ app.get("/api/live-token", async (_req, res) => {
           "Content-Type": "application/json",
         },
 
-        body: JSON.stringify({
-          uses: 1,
+       body: JSON.stringify({
+  uses: 1,
 
-          expireTime: new Date(
-            now + 30 * 60 * 1000
-          ).toISOString(),
+  expireTime: new Date(
+    now + 30 * 60 * 1000
+  ).toISOString(),
 
-          newSessionExpireTime: new Date(
-            now + 60 * 1000
-          ).toISOString(),
-        }),
-      }
-    );
+  newSessionExpireTime: new Date(
+    now + 60 * 1000
+  ).toISOString(),
+
+  liveConnectConstraints: {
+    model: `models/${model}`,
+
+    config: {
+      responseModalities: ["AUDIO"],
+
+      speechConfig: {
+        voiceConfig: {
+          prebuiltVoiceConfig: {
+            voiceName: "Leda"
+          }
+        }
+      },
+
+      systemInstruction: {
+        parts: [
+          {
+            text: SYSTEM_PROMPT
+          }
+        ]
+      },
+
+      inputAudioTranscription: {},
+      outputAudioTranscription: {}
+    }
+  }
+})
+	}
+	);
 
     const data = await tokenResponse.json();
 
