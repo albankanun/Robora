@@ -103,6 +103,16 @@ ws = new WebSocket(geminiUrl);
     say("Listening…");
     return;
   }
+};
+ws.onerror = e => {
+  console.error("VOICE WS ERROR:", e);
+};
+
+ws.onclose = e => {
+  console.error("VOICE WS CLOSED:", e.code, e.reason);
+  geminiReady = false;
+  if (running) stop();
+};
 
   // Gemini voice/text response
   const parts = m.serverContent?.modelTurn?.parts || [];
@@ -126,8 +136,8 @@ ws = new WebSocket(geminiUrl);
     say('Listening…'); 
 }
 };
-ws.oneerror = 3 => {
-   console.error("VOICE WS ERROR:",E)
+ws.onerror = e => {
+  console.error("VOICE WS ERROR:", e);
 };
 if (m.setupComplete) {
   geminiReady = true;
