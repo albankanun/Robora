@@ -97,7 +97,7 @@ function runTool(name, args, channel) {
 // ===========================================================================
 app.post("/api/chat", async (req, res) => {
   try {
-    const { history = [], message } = req.body || {};
+    const { history = [], message, lang } = req.body || {};
     if (!message) return res.status(400).json({ error: "message required" });
 
     const contents = [];
@@ -106,8 +106,14 @@ app.post("/api/chat", async (req, res) => {
     }
     contents.push({ role: "user", parts: [{ text: message }] });
 
+    const LANG_NAMES = { en: "English", sq: "Albanian (Shqip)", de: "German (Deutsch)", it: "Italian (Italiano)" };
+    let sysPrompt = SYSTEM_PROMPT;
+    if (lang && LANG_NAMES[lang]) {
+      sysPrompt += `\n\n# CURRENT CONVERSATION LANGUAGE\nThe customer opened the chat from the ${LANG_NAMES[lang]} version of the website. Begin and continue in ${LANG_NAMES[lang]} unless the customer clearly switches to another language.`;
+    }
+
     const body = {
-      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      systemInstruction: { parts: [{ text: sysPrompt }] },
       contents,
       tools: [{ functionDeclarations: TOOLS }],
       generationConfig: {

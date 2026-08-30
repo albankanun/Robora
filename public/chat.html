@@ -48,20 +48,54 @@ function add(who,txt){ const d=document.createElement('div'); d.className='b '+w
 function typing(){ const d=document.createElement('div'); d.className='typing'; d.textContent='Rina is typing…'; d.id='typing'; msgs.appendChild(d); msgs.scrollTop=msgs.scrollHeight; }
 function untyping(){ const t=document.getElementById('typing'); if(t)t.remove(); }
 
-add('rina','Hi! I\u2019m Rina from Robora. 👋 I can tell you about our cleaning robots and help you pre-order at 20% off. What are you looking for? (You can write in English, Shqip, Deutsch or Italiano.)');
+// Greeting + UI strings per language
+var LANG_STRINGS = {
+  en: {
+    greeting: "Hi! I\u2019m Rina from Robora. \ud83d\udc4b I can tell you about our cleaning robots and help you reserve at 20% off. What are you looking for?",
+    placeholder: "Ask about a product or reserve\u2026",
+    error: "Sorry \u2014 I couldn\u2019t reach the server. Please try again."
+  },
+  sq: {
+    greeting: "Përshëndetje! Unë jam Rina nga Robora. \ud83d\udc4b Mund t\u2019ju tregoj për robotët tanë të pastrimit dhe t\u2019ju ndihmoj të rezervoni me 20% zbritje. Çfarë po kërkoni?",
+    placeholder: "Pyesni për një produkt ose rezervoni\u2026",
+    error: "Na vjen keq \u2014 nuk arritëm te serveri. Ju lutemi provoni përsëri."
+  },
+  de: {
+    greeting: "Hallo! Ich bin Rina von Robora. \ud83d\udc4b Ich erzähle Ihnen gerne von unseren Reinigungsrobotern und helfe Ihnen, mit 20% Rabatt vorzubestellen. Wonach suchen Sie?",
+    placeholder: "Nach einem Produkt fragen oder reservieren\u2026",
+    error: "Entschuldigung \u2014 der Server war nicht erreichbar. Bitte versuchen Sie es erneut."
+  },
+  it: {
+    greeting: "Ciao! Sono Rina di Robora. \ud83d\udc4b Posso parlarti dei nostri robot per la pulizia e aiutarti a prenotare con il 20% di sconto. Cosa stai cercando?",
+    placeholder: "Chiedi di un prodotto o prenota\u2026",
+    error: "Spiacenti \u2014 non è stato possibile raggiungere il server. Riprova."
+  }
+};
+// Detect language: ?lang=xx in URL, else browser language, else English
+function detectLang(){
+  var p = new URLSearchParams(location.search).get('lang');
+  if (p && LANG_STRINGS[p]) return p;
+  var b = (navigator.language || 'en').slice(0,2);
+  return LANG_STRINGS[b] ? b : 'en';
+}
+var LANG = detectLang();
+var T = LANG_STRINGS[LANG];
+
+if (T.placeholder) inp.placeholder = T.placeholder;
+add('rina', T.greeting);
 
 async function submit(){
   const text=inp.value.trim(); if(!text) return;
   add('me',text); inp.value=''; send.disabled=true; typing();
   try{
     const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({history,message:text})});
+      body:JSON.stringify({history,message:text,lang:LANG})});
     const d=await r.json(); untyping();
     const reply=d.reply||d.error||'Sorry, something went wrong.';
     add('rina',reply);
     history.push({role:'user',text}); history.push({role:'model',text:reply});
     if(history.length>20) history=history.slice(-20);
-  }catch(e){ untyping(); add('rina','Sorry — I couldn\u2019t reach the server. Please try again.'); }
+  }catch(e){ untyping(); add('rina', T.error); }
   send.disabled=false; inp.focus();
 }
 send.onclick=submit;
