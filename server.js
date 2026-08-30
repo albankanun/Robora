@@ -16,6 +16,7 @@ const express = require("express");
 const { WebSocketServer, WebSocket } = require("ws");
 const { AGENT, SYSTEM_PROMPT, TOOLS, BUSINESS, CATALOG } = require("./config");
 const db = require("./db");
+const mailer = require("./mailer");
 
 const PORT = process.env.PORT || 3000;
 const GEMINI_KEY = process.env.GEMINI_API_KEY;
@@ -51,8 +52,24 @@ if (!AGENT.voiceEnabled) {
 }
 app.use(express.static(path.join(__dirname, "public"), { index: AGENT.voiceEnabled ? "index.html" : false }));
 app.get("/chat", (_req, res) => res.sendFile(path.join(__dirname, "public", "chat.html")));
-app.get("/dashboard", (_req, res) => res.sendFile(path.join(__dirname, "public", "dashboard.html")));
-app.get("/api/state", (_req, res) => res.json(db.snapshot()));
+// --- Dashboard password protection (HTTP Basic Auth) ---
+// Set DASHBOARD_USER and DASHBOARD_PASS in Render. If unset, dashboard is open (dev only).
+function dashboardAuth(req, res, next) {
+  const USER = process.env.DASHBOARD_USER;
+  const PASS = process.env.DASHBOARD_PASS;
+  if (!USER || !PASS) return next(); // not configured -> allow (you'll see a warning at startup)
+  const hdr = req.headers.authorization || "";
+  const [scheme, encoded] = hdr.split(" ");
+  if (scheme === "Basic" && encoded) {
+    const [u, p] = Buffer.from(encoded, "base64").toString().split(":");
+    if (u === USER && p === PASS) return next();
+  }
+  res.set("WWW-Authenticate", 'Basic realm="Robora Dashboard"');
+  return res.status(401).send("Authentication required.");
+}
+
+app.get("/dashboard", dashboardAuth, (_req, res) => res.sendFile(path.join(__dirname, "public", "dashboard.html")));
+app.get("/api/state", dashboardAuth, (_req, res) => res.json(db.snapshot()));
 app.get("/api/catalog", (_req, res) => res.json(CATALOG.map(p => ({
   ...p, preorder: db.preof(p.retail), you_save: db.saveof(p.retail),
 }))));
@@ -83,9 +100,11 @@ function runTool(name, args, channel) {
   } catch (e) {
     result = { success: false, message: "Tool error: " + e.message };
   }
-  // fire dashboard events
+  // fire dashboard events + send email notifications
   if (result && result._event) {
     broadcast({ ...result._event, channel, at: new Date().toISOString() });
+    if (result._event.type === "preorder") mailer.emailPreorder(result._event.order);
+    else if (result._event.type === "message") mailer.emailMessage(result._event.msg);
     delete result._event;
   }
   return result;
@@ -255,6 +274,18 @@ server.on("upgrade", (req, socket, head) => {
   if (url.startsWith("/ws/voice")) {
     wssVoice.handleUpgrade(req, socket, head, (ws) => wssVoice.emit("connection", ws, req));
   } else if (url.startsWith("/ws/dashboard")) {
+    // Require the same basic-auth credentials for the realtime feed
+    const USER = process.env.DASHBOARD_USER, PASS = process.env.DASHBOARD_PASS;
+    if (USER && PASS) {
+      const hdr = req.headers.authorization || "";
+      const [scheme, encoded] = hdr.split(" ");
+      let ok = false;
+      if (scheme === "Basic" && encoded) {
+        const [u, p] = Buffer.from(encoded, "base64").toString().split(":");
+        ok = (u === USER && p === PASS);
+      }
+      if (!ok) { socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n"); socket.destroy(); return; }
+    }
     wssDash.handleUpgrade(req, socket, head, (ws) => wssDash.emit("connection", ws, req));
   } else {
     socket.destroy();
@@ -266,4 +297,8 @@ server.listen(PORT, () => {
   console.log(`   Chat widget:     http://localhost:${PORT}/  (and /chat)`);
   console.log(`   Voice widget:    ${AGENT.voiceEnabled ? "http://localhost:"+PORT+"/voice" : "SUSPENDED (set AGENT.voiceEnabled=true to enable)"}`);
   console.log(`   Staff dashboard: http://localhost:${PORT}/dashboard\n`);
+  if (!process.env.DASHBOARD_USER || !process.env.DASHBOARD_PASS)
+    console.warn("\u26A0\uFE0F  Dashboard is NOT password-protected. Set DASHBOARD_USER and DASHBOARD_PASS in Render.");
+  if (!process.env.SMTP_PASS)
+    console.warn("\u26A0\uFE0F  Reservation emails OFF. Set SMTP_PASS (and SMTP_USER/HOST) in Render to email info@robora.eu.");
 });
