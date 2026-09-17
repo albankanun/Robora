@@ -1,8 +1,7 @@
 // ============================================================================
-// ROBORA — VIRTUAL SALES & PRE-ORDER ASSISTANT CONFIGURATION
-// Everything that defines WHO the assistant is and WHAT it can do.
-// Edit BUSINESS, CATALOG and POLICIES to match reality; the rest rarely changes.
-// Shared by BOTH the voice widget and the text chat widget.
+// ROBORA — VIRTUAL SALES & RESERVATION ASSISTANT CONFIGURATION
+// Shared by the text chat widget (voice is suspended; see AGENT.voiceEnabled).
+// Edit BUSINESS, CATALOG and POLICIES to match reality.
 // ============================================================================
 
 const BUSINESS = {
@@ -13,148 +12,126 @@ const BUSINESS = {
   website: "https://robora.eu",
   email: "info@robora.eu",
   address: "Zekeria Cana 13, Prishtinë, Kosovo",
-  // Pre-order campaign facts
-  preorderDiscount: 0.20,          // 20% off retail for pre-orders
+  preorderDiscount: 0,             // <-- DISCOUNT OFF for now. Set to 0.20 to bring back 20% off.
   deliveryBy: "the end of September",
-  noPaymentNow: true,              // pre-orders take no payment up front
+  noPaymentNow: true,
   freeDeliveryRegions: ["Kosovo", "Albania", "North Macedonia"],
   languages: ["English", "Albanian (Shqip)", "German (Deutsch)", "Italian (Italiano)"],
 };
 
 // ----------------------------------------------------------------------------
-// PRODUCT CATALOG — single source of truth for both widgets.
-// prices in EUR. preorder price is retail * 0.8 (computed in db.js).
+// PRODUCT CATALOG — prices in EUR. Reservation price = retail * (1 - discount).
 // ----------------------------------------------------------------------------
 const CATALOG = [
-  {
-    id: "hutt10", name: "Hutt 10", category: "Window robots", retail: 399,
+  { id: "hutt10", name: "Hutt 10", category: "Window robots", retail: 399,
     blurb: "Autonomous window, mirror and glass-door cleaning — wet and dry in a single pass.",
     features: ["One-button operation, no app required", "Smart edge detection and route planning",
-               "Cleans windows, mirrors, shower screens and tiles", "Secure suction with anti-drop safety"],
-  },
-  {
-    id: "hutts10", name: "Hutt S10", category: "Window robots", retail: 649,
+               "Cleans windows, mirrors, shower screens and tiles", "Secure suction with anti-drop safety"] },
+  { id: "hutts10", name: "Hutt S10", category: "Window robots", retail: 649,
     blurb: "The newest flagship window robot — advanced navigation and coverage for larger windows and facades.",
     features: ["Next-generation path planning for full coverage", "Powerful suction with quiet operation",
-               "Ideal for large panes and commercial glass", "Latest 2026 model"],
-  },
-  {
-    id: "t20", name: "Mamibot Robot Vacuum Cleaner T20", category: "Robot vacuums", retail: 749,
+               "Ideal for large panes and commercial glass", "Latest 2026 model"] },
+  { id: "t20", name: "Mamibot Robot Vacuum Cleaner T20", category: "Robot vacuums", retail: 749,
     blurb: "Robot vacuum with self-emptying station — vacuums and mops, then empties itself.",
     features: ["Self-empty docking station", "Laser navigation and smart mapping",
-               "Vacuum and mop in one run", "Ideal for whole-home cleaning"],
-  },
-  {
-    id: "v12", name: "Mamibot Cordless Stick Vacuum with Self-Empty Station V12", category: "Stick vacuums", retail: 349,
+               "Vacuum and mop in one run", "Ideal for whole-home cleaning"] },
+  { id: "v12", name: "Mamibot Cordless Stick Vacuum with Self-Empty Station V12", category: "Stick vacuums", retail: 349,
     blurb: "Cordless stick vacuum with its own self-empty station — powerful and convenient.",
     features: ["Self-empty charging station", "Strong cordless suction",
-               "Lightweight and manoeuvrable", "Great for floors, carpets and stairs"],
-  },
-  {
-    id: "flomo", name: "Mamibot Cordless Steam Floor Washer FLOMO FLAT", category: "Floor washers", retail: 449,
+               "Lightweight and manoeuvrable", "Great for floors, carpets and stairs"] },
+  { id: "flomo", name: "Mamibot Cordless Steam Floor Washer FLOMO FLAT", category: "Floor washers", retail: 449,
     blurb: "Cordless steam floor washer — washes and steam-cleans hard floors in one pass.",
     features: ["Steam cleaning for hard floors", "Washes and dries as it goes",
-               "Cordless freedom, lie-flat design", "Self-cleaning function"],
-  },
-  {
-    id: "dymo", name: "Mamibot Cordless Electric Mop DYMO", category: "Electric mops", retail: 199,
+               "Cordless freedom, lie-flat design", "Self-cleaning function"] },
+  { id: "dymo", name: "Mamibot Cordless Electric Mop DYMO", category: "Electric mops", retail: 199,
     blurb: "Cordless electric spin mop — mops, polishes and waxes with spinning pads.",
     features: ["Dual spinning mop pads", "Mop, polish and wax modes",
-               "Cordless and lightweight", "Quiet operation"],
-  },
-  {
-    id: "uvlite", name: "Mamibot Cordless UV Dust Mite Cleaner UVLITE200", category: "UV cleaners", retail: 149,
+               "Cordless and lightweight", "Quiet operation"] },
+  { id: "uvlite", name: "Mamibot Cordless UV Dust Mite Cleaner UVLITE200", category: "UV cleaners", retail: 149,
     blurb: "Cordless UV dust-mite cleaner — sanitises mattresses, bedding and sofas.",
     features: ["UV-C sanitisation kills dust mites", "Powerful tapping and suction",
-               "Cordless and easy to handle", "For mattresses, bedding and upholstery"],
-  },
-  {
-    id: "sticar", name: "Mamibot Handheld Car Vacuum - Sticar200", category: "Car vacuums", retail: 99,
+               "Cordless and easy to handle", "For mattresses, bedding and upholstery"] },
+  { id: "sticar", name: "Mamibot Handheld Car Vacuum - Sticar200", category: "Car vacuums", retail: 99,
     blurb: "Handheld car vacuum — compact, cordless and strong for cars and tight spaces.",
     features: ["Compact handheld design", "Strong cordless suction",
-               "Includes crevice tools", "Perfect for cars and quick clean-ups"],
-  },
+               "Includes crevice tools", "Perfect for cars and quick clean-ups"] },
 ];
 
-// ----------------------------------------------------------------------------
-// POLICIES — business rules the assistant must respect.
-// ----------------------------------------------------------------------------
 const POLICIES = {
-  maxQtyPerItem: 20,          // sanity cap per line
-  paymentNow: false,          // pre-orders never take payment in the call/chat
+  maxQtyPerItem: 20,
+  paymentNow: false,
   deliveryWindow: "the end of September",
-  comingSoon: ["Pool robots", "Garden mowers"], // brand vision, not yet for sale
+  comingSoon: ["Pool robots", "Garden mowers"],
 };
 
-// ----------------------------------------------------------------------------
-// AGENT — persona + model settings.
-// ----------------------------------------------------------------------------
-// Set voiceEnabled to true to re-activate the voice widget later.
 const AGENT = {
-  voiceEnabled: false,   // <-- voice suspended; chat only. Flip to true to bring voice back.
-  name: "Rina",                       // the assistant's name
-  voice: "Aoede",                     // Gemini Live voice (Kore/Leda/Aoede/Puck/Charon…)
-  model: "gemini-2.5-flash-native-audio-preview-12-2025", // Gemini Live model for speech-to-speech
-  textModel: "gemini-3.6-flash",      // model for the text chat widget
+  name: "Rina",
+  voiceEnabled: false,             // voice suspended; chat only. true = re-enable voice.
+  voice: "Aoede",
+  model: "gemini-2.5-flash-native-audio-preview-12-2025", // (only used if voice re-enabled)
+  textModel: "gemini-3.6-flash",   // text chat model
 };
 
 // ----------------------------------------------------------------------------
-// SYSTEM PROMPT — the shared brain for voice + chat.
+// SYSTEM PROMPT
 // ----------------------------------------------------------------------------
+const HAS_DISCOUNT = BUSINESS.preorderDiscount > 0;
 const CATALOG_TEXT = CATALOG.map(p => {
   const pre = (p.retail * (1 - BUSINESS.preorderDiscount)).toFixed(2);
-  return `• ${p.name} (${p.category}) — retail €${p.retail}, pre-order €${pre} (20% off). ${p.blurb}`;
+  return HAS_DISCOUNT
+    ? `• ${p.name} (${p.category}) — retail €${p.retail}, reservation €${pre} (${BUSINESS.preorderDiscount*100}% off). ${p.blurb}`
+    : `• ${p.name} (${p.category}) — €${p.retail}. ${p.blurb}`;
 }).join("\n");
 
 const SYSTEM_PROMPT = `
 You are ${AGENT.name}, the friendly virtual sales assistant for ${BUSINESS.name} (${BUSINESS.legalName}), ${BUSINESS.what}. Your tagline is "${BUSINESS.tagline}".
 
 # YOUR JOB
-Help customers understand the products and place PRE-ORDERS. Pre-orders get ${BUSINESS.preorderDiscount * 100}% off retail, take NO payment now, and are delivered by ${BUSINESS.deliveryBy}. You confirm the order by collecting the customer's details; the team then follows up by email to finalise.
+Help customers understand the products and place RESERVATIONS. Reservations take NO payment now, and are delivered by ${BUSINESS.deliveryBy}. You confirm the reservation by collecting the customer's details; the team then follows up by email to finalise.
+${HAS_DISCOUNT ? `Reservations currently get ${BUSINESS.preorderDiscount*100}% off retail.` : `Prices are the normal retail prices shown below. There is no special discount right now — do not invent or promise any discount.`}
 
 # LANGUAGES
 You are fluent in English, Albanian (Shqip), German (Deutsch) and Italian (Italiano). Detect the language the customer uses and respond in THAT language. If they switch, you switch. Keep the same warmth in every language.
 
 # ALBANIAN TERMINOLOGY (important)
-When speaking Albanian, the word for "pre-order" is "rezervim" (noun) / "rezervo" (verb) — NEVER "porosi paraprake" or "pre-order". For example: "Rezervo tani me 20% zbritje", "Dëshironi ta rezervoni?", "rezervimi juaj". Use "rezervim/rezervo" consistently.
-For "smart" devices/robots, say "pajisje inteligjente" or "pajisje të mençura" — NEVER "pajisje me mend" (that is wrong Albanian). E.g. "robotë inteligjentë për pastrim", "pajisje të mençura për shtëpinë".
+When speaking Albanian, the word for "reservation/pre-order" is "rezervim" (noun) / "rezervo" (verb) — NEVER "porosi paraprake" or "pre-order". E.g. "Dëshironi ta rezervoni?", "rezervimi juaj".
+For "smart" devices/robots, say "pajisje inteligjente" or "pajisje të mençura" — NEVER "pajisje me mend" (that is wrong Albanian). E.g. "robotë inteligjentë për pastrim".
 
-# PRODUCTS (retail → pre-order price)
+# PRODUCTS
 ${CATALOG_TEXT}
 
-Coming soon (NOT yet for sale — do not take orders for these): ${POLICIES.comingSoon.join(", ")}.
+Coming soon (NOT yet for sale — do not take reservations for these): ${POLICIES.comingSoon.join(", ")}.
 
 # FREE DELIVERY
 Delivery is FREE to ${BUSINESS.freeDeliveryRegions.join(", ")}. Mention this when relevant, especially to customers in those countries.
 
-# HOW TO TAKE A PRE-ORDER
-1. Help them choose product(s). They can order several — capture each product and quantity.
-2. Tell them the pre-order price and how much they save (20%).
+# HOW TO TAKE A RESERVATION
+1. Help them choose product(s). They can reserve several — capture each product and quantity.
+2. Tell them the price${HAS_DISCOUNT ? " and how much they save" : ""}.
 3. Collect: full name, email, and phone number. These are required.
-4. Read the order back (items, quantities, total, savings) and confirm.
+4. Read the reservation back (items, quantities, total) and confirm.
 5. Call the create_preorder tool with everything. Then reassure them the team will email to confirm.
 
 # STYLE
-- Warm, concise, helpful. Never pushy. You're a knowledgeable shop assistant, not a hard-seller.
-- In VOICE: speak naturally, short sentences, no bullet symbols or markdown. Say prices like "three hundred nineteen euros twenty".
-- In CHAT: you may use short lists and **bold** sparingly.
-- Never invent products, specs, or prices beyond what's above. If unsure, say you'll have the team follow up, and offer to take a message with take_message.
-- Never take payment or ask for card details — pre-orders are free to place.
-- If asked something you can't do (order status, technical support, becoming a reseller), use take_message to pass it to the team.
+- Warm, concise, helpful. Never pushy. A knowledgeable shop assistant, not a hard-seller.
+- In CHAT you may use short lists and **bold** sparingly.
+- Never invent products, specs, or prices beyond what's above. If unsure, offer to have the team follow up (take_message).
+- Never take payment or ask for card details — reservations are free to place.
+- If asked something you can't do (order status, technical support, becoming a reseller), use take_message.
+- Be honest that Robora is a reseller of these brands (Hutt, Mamibot).
 
 # IMPORTANT
 - Always confirm details before calling create_preorder.
-- Prices are in euros. Compute totals correctly (pre-order price × quantity).
-- Be honest that Robora is a reseller of these brands (Hutt, Mamibot).
+- Prices are in euros. Compute totals correctly (price × quantity).
 `.trim();
 
 // ----------------------------------------------------------------------------
-// TOOLS — function declarations the model can call (shared by voice + chat).
+// TOOLS
 // ----------------------------------------------------------------------------
 const TOOLS = [
   {
     name: "create_preorder",
-    description: "Record a customer's pre-order once they have confirmed the items and provided their contact details. Takes no payment.",
+    description: "Record a customer's reservation once they have confirmed the items and provided their contact details. Takes no payment.",
     parameters: {
       type: "object",
       properties: {
@@ -162,8 +139,7 @@ const TOOLS = [
         email: { type: "string", description: "Customer's email address" },
         phone: { type: "string", description: "Customer's phone number" },
         items: {
-          type: "array",
-          description: "The products being pre-ordered",
+          type: "array", description: "The products being reserved",
           items: {
             type: "object",
             properties: {
@@ -181,7 +157,7 @@ const TOOLS = [
   },
   {
     name: "check_price",
-    description: "Look up the retail and pre-order price of a product, and the savings. Use when a customer asks about price or what a product costs.",
+    description: "Look up the price of a product. Use when a customer asks about price or what a product costs.",
     parameters: {
       type: "object",
       properties: {

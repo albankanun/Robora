@@ -1,8 +1,7 @@
 // ============================================================================
-// mailer.js — sends chat reservations & messages to info@robora.eu
-//   Uses the same mailbox the website form uses (form@robora.eu -> info@).
+// mailer.js — emails chat reservations & messages to info@robora.eu via SMTP.
 //   Credentials come from environment variables (set them in Render).
-//   If SMTP isn't configured, it silently skips (dashboard still works).
+//   If SMTP_PASS isn't set, emailing is skipped (dashboard still records).
 // ============================================================================
 const nodemailer = require("nodemailer");
 
@@ -16,38 +15,33 @@ const FROM = process.env.MAIL_FROM || "Robora Assistant <form@robora.eu>";
 let transporter = null;
 if (PASS) {
   transporter = nodemailer.createTransport({
-    host: HOST,
-    port: PORT,
-    secure: PORT === 465,            // 465 = SSL, 587 = STARTTLS
-    auth: { user: USER, pass: PASS },
+    host: HOST, port: PORT, secure: PORT === 465, auth: { user: USER, pass: PASS },
   });
 } else {
-  console.warn("\u26A0\uFE0F  SMTP_PASS not set — reservation emails are OFF (dashboard still records them). Set SMTP_* env vars in Render to enable.");
+  console.warn("\u26A0\uFE0F  SMTP_PASS not set — reservation emails are OFF (dashboard still records them).");
 }
 
 function eur(n) { return "\u20AC" + Number(n).toFixed(2); }
 
 async function emailPreorder(order) {
   if (!transporter) return;
-  const lines = order.lines.map(l => `  • ${l.name} \u00D7 ${l.quantity} = ${eur(l.line_total)}`).join("\n");
+  const lines = (order.lines && order.lines.length)
+    ? order.lines.map(l => `  • ${l.name} \u00D7 ${l.quantity} = ${eur(l.line_total)}`).join("\n")
+    : (order.raw_order || "");
   const body =
-`New RESERVATION from the website chat assistant (Rina)
+`New RESERVATION (${order.source === "web" ? "website" : "chat assistant"})
 =====================================================
 Name:  ${order.name}
 Email: ${order.email}
 Phone: ${order.phone}
-Language: ${order.language || "?"}
-Time:  ${new Date(order.createdAt).toLocaleString()}
+${order.language ? "Language: " + order.language + "\n" : ""}Time:  ${new Date(order.createdAt).toLocaleString()}
 -----------------------------------------------------
 ${lines}
 -----------------------------------------------------
-Retail total:    ${eur(order.retail_total)}
-Reservation total: ${eur(order.preorder_total)}
-Customer saves:  ${eur(order.you_save)}
+Total: ${eur(order.preorder_total)}
 ${order.note ? "\nNote: " + order.note : ""}
 =====================================================
 Reply to this email to contact the customer (${order.email}).`;
-
   try {
     await transporter.sendMail({
       from: FROM, to: TO, replyTo: `${order.name} <${order.email}>`,
@@ -55,9 +49,7 @@ Reply to this email to contact the customer (${order.email}).`;
       text: body,
     });
     console.log("\u2709\uFE0F  Reservation emailed to", TO, "(", order.id, ")");
-  } catch (e) {
-    console.error("Reservation email failed:", e.message);
-  }
+  } catch (e) { console.error("Reservation email failed:", e.message); }
 }
 
 async function emailMessage(msg) {
@@ -79,9 +71,7 @@ ${msg.message}
       text: body,
     });
     console.log("\u2709\uFE0F  Message emailed to", TO, "(", msg.id, ")");
-  } catch (e) {
-    console.error("Message email failed:", e.message);
-  }
+  } catch (e) { console.error("Message email failed:", e.message); }
 }
 
 module.exports = { emailPreorder, emailMessage };

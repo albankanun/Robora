@@ -1,12 +1,12 @@
 // ============================================================================
-// server.js — Robora virtual sales assistant
-//   /                caller-facing VOICE widget
-//   /chat            customer TEXT chat widget
-//   /dashboard       staff dashboard (realtime)
-//   /ws/voice        browser <-> server <-> Gemini Live audio proxy
-//   /ws/dashboard    realtime events for the dashboard
-//   /api/chat        text chat endpoint (REST, uses Gemini + same tools)
-//   /api/state       full data snapshot (dashboard bootstrap)
+// server.js — Robora virtual sales & reservation assistant
+//   /              chat widget (voice suspended)
+//   /chat          chat widget
+//   /dashboard     staff dashboard (PASSWORD PROTECTED if env vars set)
+//   /api/chat      text chat endpoint (Gemini + tools)
+//   /api/web-order website cart posts reservations here (tagged "web")
+//   /api/state     dashboard data (protected)
+//   /ws/dashboard  realtime dashboard feed (protected)
 // The Gemini API key stays on the server; the browser never sees it.
 // ============================================================================
 require("dotenv").config();
@@ -20,7 +20,7 @@ const mailer = require("./mailer");
 
 const PORT = process.env.PORT || 3000;
 const GEMINI_KEY = process.env.GEMINI_API_KEY;
-if (!GEMINI_KEY) console.warn("\u26A0\uFE0F  GEMINI_API_KEY missing — set it in .env");
+if (!GEMINI_KEY) console.warn("\u26A0\uFE0F  GEMINI_API_KEY missing — set it in the environment.");
 
 const GEMINI_WS =
   "wss://generativelanguage.googleapis.com/ws/" +
@@ -33,31 +33,17 @@ const GEMINI_REST =
 const app = express();
 app.use(express.json());
 
-// Allow robora.eu (and its subdomains) to embed the chat widget in an iframe.
+// Allow robora.eu to embed the chat in an iframe.
 app.use((req, res, next) => {
-  res.setHeader(
-    "Content-Security-Policy",
-    "frame-ancestors 'self' https://robora.eu https://www.robora.eu"
-  );
+  res.setHeader("Content-Security-Policy",
+    "frame-ancestors 'self' https://robora.eu https://www.robora.eu");
   next();
 });
-// --- Voice suspension routing (must be BEFORE static so it wins) ---
-if (!AGENT.voiceEnabled) {
-  app.get(["/", "/index.html", "/voice", "/voice.html"], (_req, res) => {
-    if (_req.path === "/") return res.sendFile(path.join(__dirname, "public", "chat.html"));
-    return res.redirect("/chat");
-  });
-} else {
-  app.get("/voice", (_req, res) => res.sendFile(path.join(__dirname, "public", "voice.html")));
-}
-app.use(express.static(path.join(__dirname, "public"), { index: AGENT.voiceEnabled ? "index.html" : false }));
-app.get("/chat", (_req, res) => res.sendFile(path.join(__dirname, "public", "chat.html")));
+
 // --- Dashboard password protection (HTTP Basic Auth) ---
-// Set DASHBOARD_USER and DASHBOARD_PASS in Render. If unset, dashboard is open (dev only).
 function dashboardAuth(req, res, next) {
-  const USER = process.env.DASHBOARD_USER;
-  const PASS = process.env.DASHBOARD_PASS;
-  if (!USER || !PASS) return next(); // not configured -> allow (you'll see a warning at startup)
+  const USER = process.env.DASHBOARD_USER, PASS = process.env.DASHBOARD_PASS;
+  if (!USER || !PASS) return next(); // not configured -> open (warning at startup)
   const hdr = req.headers.authorization || "";
   const [scheme, encoded] = hdr.split(" ");
   if (scheme === "Basic" && encoded) {
@@ -68,10 +54,22 @@ function dashboardAuth(req, res, next) {
   return res.status(401).send("Authentication required.");
 }
 
+// --- Voice suspension routing (before static so it wins) ---
+if (!AGENT.voiceEnabled) {
+  app.get(["/", "/index.html", "/voice", "/voice.html"], (req, res) => {
+    if (req.path === "/") return res.sendFile(path.join(__dirname, "public", "chat.html"));
+    return res.redirect("/chat");
+  });
+} else {
+  app.get("/voice", (_req, res) => res.sendFile(path.join(__dirname, "public", "voice.html")));
+}
+app.use(express.static(path.join(__dirname, "public"), { index: AGENT.voiceEnabled ? "index.html" : false }));
+
+app.get("/chat", (_req, res) => res.sendFile(path.join(__dirname, "public", "chat.html")));
 app.get("/dashboard", dashboardAuth, (_req, res) => res.sendFile(path.join(__dirname, "public", "dashboard.html")));
 app.get("/api/state", dashboardAuth, (_req, res) => res.json(db.snapshot()));
 app.get("/api/catalog", (_req, res) => res.json(CATALOG.map(p => ({
-  ...p, preorder: db.preof(p.retail), you_save: db.saveof(p.retail),
+  ...p, price: db.preof(p.retail),
 }))));
 
 const server = http.createServer(app);
@@ -87,20 +85,33 @@ function broadcast(event) {
 }
 
 // ---------------------------------------------------------------------------
-// Tool dispatch — executes a function the model called, returns the result,
-// and notifies the dashboard ("FROM ASSISTANT" toasts).
+// Website cart -> dashboard (tagged "web"), also emailed by the website itself
+// ---------------------------------------------------------------------------
+app.post("/api/web-order", (req, res) => {
+  try {
+    const { name, email, phone, order, total } = req.body || {};
+    if (!name || !email || !order) return res.status(400).json({ ok: false, error: "missing fields" });
+    const rec = db.recordWebOrder({ name, email, phone, order, total });
+    broadcast({ type: "preorder", order: rec, channel: "web", at: new Date().toISOString() });
+    res.json({ ok: true, id: rec.id });
+  } catch (e) {
+    console.error("web-order error:", e.message);
+    res.status(500).json({ ok: false });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Tool dispatch (chat) — runs a tool, notifies dashboard, emails reservations
 // ---------------------------------------------------------------------------
 function runTool(name, args, channel) {
   let result;
   try {
-    if (name === "create_preorder")      result = db.createPreorder(args || {});
-    else if (name === "check_price")     result = db.checkPrice(args || {});
-    else if (name === "take_message")    result = db.takeMessage(args || {});
-    else                                 result = { success: false, message: `Unknown tool ${name}` };
-  } catch (e) {
-    result = { success: false, message: "Tool error: " + e.message };
-  }
-  // fire dashboard events + send email notifications
+    if (name === "create_preorder")   result = db.createPreorder(args || {});
+    else if (name === "check_price")  result = db.checkPrice(args || {});
+    else if (name === "take_message") result = db.takeMessage(args || {});
+    else                              result = { success: false, message: `Unknown tool ${name}` };
+  } catch (e) { result = { success: false, message: "Tool error: " + e.message }; }
+
   if (result && result._event) {
     broadcast({ ...result._event, channel, at: new Date().toISOString() });
     if (result._event.type === "preorder") mailer.emailPreorder(result._event.order);
@@ -111,8 +122,7 @@ function runTool(name, args, channel) {
 }
 
 // ===========================================================================
-// TEXT CHAT — /api/chat  (REST, multi-turn via history in the request)
-// body: { history: [{role:'user'|'model', text:'...'}], message: '...' }
+// TEXT CHAT — /api/chat
 // ===========================================================================
 app.post("/api/chat", async (req, res) => {
   try {
@@ -120,15 +130,13 @@ app.post("/api/chat", async (req, res) => {
     if (!message) return res.status(400).json({ error: "message required" });
 
     const contents = [];
-    for (const h of history) {
-      contents.push({ role: h.role === "model" ? "model" : "user", parts: [{ text: h.text }] });
-    }
+    for (const h of history) contents.push({ role: h.role === "model" ? "model" : "user", parts: [{ text: h.text }] });
     contents.push({ role: "user", parts: [{ text: message }] });
 
     const LANG_NAMES = { en: "English", sq: "Albanian (Shqip)", de: "German (Deutsch)", it: "Italian (Italiano)" };
     let sysPrompt = SYSTEM_PROMPT;
     if (lang && LANG_NAMES[lang]) {
-      sysPrompt += `\n\n# CURRENT CONVERSATION LANGUAGE\nThe customer opened the chat from the ${LANG_NAMES[lang]} version of the website. Begin and continue in ${LANG_NAMES[lang]} unless the customer clearly switches to another language.`;
+      sysPrompt += `\n\n# CURRENT CONVERSATION LANGUAGE\nThe customer opened the chat from the ${LANG_NAMES[lang]} version of the website. Begin and continue in ${LANG_NAMES[lang]} unless the customer clearly switches.`;
     }
 
     const body = {
@@ -137,12 +145,11 @@ app.post("/api/chat", async (req, res) => {
       tools: [{ functionDeclarations: TOOLS }],
       generationConfig: {
         temperature: 0.7,
-        maxOutputTokens: 500,          // sales replies are short — caps latency
-        thinkingConfig: { thinkingLevel: "low" }, // minimise thinking for speed (Gemini 3.x)
+        maxOutputTokens: 500,
+        thinkingConfig: { thinkingLevel: "low" },
       },
     };
 
-    // Tool loop: call model, run any tool calls, feed results back, repeat.
     let reply = "";
     for (let hop = 0; hop < 5; hop++) {
       const r = await fetch(GEMINI_REST, {
@@ -158,11 +165,10 @@ app.post("/api/chat", async (req, res) => {
 
       if (calls.length) {
         body.contents.push({ role: "model", parts });
-        const responseParts = calls.map(c => ({
+        body.contents.push({ role: "user", parts: calls.map(c => ({
           functionResponse: { name: c.name, response: runTool(c.name, c.args, "chat") },
-        }));
-        body.contents.push({ role: "user", parts: responseParts });
-        continue; // let the model speak after seeing tool results
+        })) });
+        continue;
       }
       reply = parts.filter(p => p.text).map(p => p.text).join("").trim();
       break;
@@ -185,81 +191,46 @@ wssDash.on("connection", (ws) => {
 });
 
 // ===========================================================================
-// VOICE WS — browser <-> server <-> Gemini Live
-//   Browser sends 16 kHz PCM mic frames; server relays to Gemini Live.
-//   Gemini streams 24 kHz PCM audio back + toolCall frames (run server-side).
+// VOICE WS — only active if AGENT.voiceEnabled
 // ===========================================================================
 const wssVoice = new WebSocketServer({ noServer: true });
 wssVoice.on("connection", (client) => {
   if (!AGENT.voiceEnabled) { client.close(1000, "voice disabled"); return; }
   if (!GEMINI_KEY) { client.close(1011, "no api key"); return; }
   const gem = new WebSocket(GEMINI_WS);
-  let gemReady = false;
-  const queue = [];
-
+  let gemReady = false; const queue = [];
   gem.on("open", () => {
-    gem.send(JSON.stringify({
-      setup: {
-        model: `models/${AGENT.model}`,
-        generationConfig: {
-          responseModalities: ["AUDIO"],
-          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: AGENT.voice } } },
-        },
-        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        tools: [{ functionDeclarations: TOOLS }],
-      },
-    }));
+    gem.send(JSON.stringify({ setup: {
+      model: `models/${AGENT.model}`,
+      generationConfig: { responseModalities: ["AUDIO"],
+        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: AGENT.voice } } } },
+      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      tools: [{ functionDeclarations: TOOLS }],
+    } }));
   });
-
   gem.on("message", (raw) => {
     let msg; try { msg = JSON.parse(raw.toString()); } catch { return; }
-
-    if (msg.setupComplete) {
-      gemReady = true;
-      while (queue.length) gem.send(queue.shift());
-      client.send(JSON.stringify({ type: "ready" }));
-      return;
-    }
-    // Tool calls from Gemini Live
+    if (msg.setupComplete) { gemReady = true; while (queue.length) gem.send(queue.shift()); client.send(JSON.stringify({ type: "ready" })); return; }
     if (msg.toolCall && msg.toolCall.functionCalls) {
-      const responses = msg.toolCall.functionCalls.map(fc => ({
-        id: fc.id, name: fc.name, response: runTool(fc.name, fc.args, "voice"),
-      }));
-      gem.send(JSON.stringify({ toolResponse: { functionResponses: responses } }));
-      client.send(JSON.stringify({ type: "tool", names: msg.toolCall.functionCalls.map(f => f.name) }));
+      gem.send(JSON.stringify({ toolResponse: { functionResponses: msg.toolCall.functionCalls.map(fc => ({
+        id: fc.id, name: fc.name, response: runTool(fc.name, fc.args, "voice") })) } }));
       return;
     }
-    // Model audio + transcripts
     const sc = msg.serverContent;
     if (sc) {
-      if (sc.modelTurn && sc.modelTurn.parts) {
-        for (const part of sc.modelTurn.parts) {
-          if (part.inlineData && part.inlineData.data) {
-            client.send(JSON.stringify({ type: "audio", data: part.inlineData.data })); // base64 24k PCM
-          }
-          if (part.text) client.send(JSON.stringify({ type: "text", text: part.text }));
-        }
+      if (sc.modelTurn && sc.modelTurn.parts) for (const part of sc.modelTurn.parts) {
+        if (part.inlineData && part.inlineData.data) client.send(JSON.stringify({ type: "audio", data: part.inlineData.data }));
+        if (part.text) client.send(JSON.stringify({ type: "text", text: part.text }));
       }
       if (sc.turnComplete) client.send(JSON.stringify({ type: "turn_complete" }));
-      if (sc.interrupted) client.send(JSON.stringify({ type: "interrupted" }));
     }
   });
-
   gem.on("close", () => { try { client.close(); } catch {} });
-  gem.on("error", (e) => { console.error("Gemini WS error:", e.message); try { client.close(); } catch {} });
-
-  // Browser -> server
+  gem.on("error", () => { try { client.close(); } catch {} });
   client.on("message", (raw) => {
     let msg; try { msg = JSON.parse(raw.toString()); } catch { return; }
     if (msg.type === "audio" && msg.data) {
-      const frame = JSON.stringify({
-        realtimeInput: { mediaChunks: [{ mimeType: "audio/pcm;rate=16000", data: msg.data }] },
-      });
-      gemReady ? gem.send(frame) : queue.push(frame);
-    } else if (msg.type === "text" && msg.text) {
-      const frame = JSON.stringify({
-        clientContent: { turns: [{ role: "user", parts: [{ text: msg.text }] }], turnComplete: true },
-      });
+      const frame = JSON.stringify({ realtimeInput: { mediaChunks: [{ mimeType: "audio/pcm;rate=16000", data: msg.data }] } });
       gemReady ? gem.send(frame) : queue.push(frame);
     }
   });
@@ -267,14 +238,13 @@ wssVoice.on("connection", (client) => {
 });
 
 // ---------------------------------------------------------------------------
-// Upgrade routing
+// Upgrade routing (dashboard WS protected by same basic auth)
 // ---------------------------------------------------------------------------
 server.on("upgrade", (req, socket, head) => {
   const { url } = req;
   if (url.startsWith("/ws/voice")) {
     wssVoice.handleUpgrade(req, socket, head, (ws) => wssVoice.emit("connection", ws, req));
   } else if (url.startsWith("/ws/dashboard")) {
-    // Require the same basic-auth credentials for the realtime feed
     const USER = process.env.DASHBOARD_USER, PASS = process.env.DASHBOARD_PASS;
     if (USER && PASS) {
       const hdr = req.headers.authorization || "";
@@ -293,12 +263,11 @@ server.on("upgrade", (req, socket, head) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`\n\uD83E\uDD16  ${BUSINESS.name} virtual assistant "${AGENT.name}"`);
-  console.log(`   Chat widget:     http://localhost:${PORT}/  (and /chat)`);
-  console.log(`   Voice widget:    ${AGENT.voiceEnabled ? "http://localhost:"+PORT+"/voice" : "SUSPENDED (set AGENT.voiceEnabled=true to enable)"}`);
-  console.log(`   Staff dashboard: http://localhost:${PORT}/dashboard\n`);
+  console.log(`\n\uD83E\uDD16  ${BUSINESS.name} assistant "${AGENT.name}"`);
+  console.log(`   Chat:      http://localhost:${PORT}/  (and /chat)`);
+  console.log(`   Dashboard: http://localhost:${PORT}/dashboard`);
   if (!process.env.DASHBOARD_USER || !process.env.DASHBOARD_PASS)
-    console.warn("\u26A0\uFE0F  Dashboard is NOT password-protected. Set DASHBOARD_USER and DASHBOARD_PASS in Render.");
+    console.warn("\u26A0\uFE0F  Dashboard NOT password-protected. Set DASHBOARD_USER and DASHBOARD_PASS.");
   if (!process.env.SMTP_PASS)
-    console.warn("\u26A0\uFE0F  Reservation emails OFF. Set SMTP_PASS (and SMTP_USER/HOST) in Render to email info@robora.eu.");
+    console.warn("\u26A0\uFE0F  Reservation emails OFF. Set SMTP_PASS (+ SMTP_USER/HOST) to email info@robora.eu.\n");
 });
