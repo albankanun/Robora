@@ -17,6 +17,8 @@ const { WebSocketServer, WebSocket } = require("ws");
 const { AGENT, SYSTEM_PROMPT, TOOLS, BUSINESS, CATALOG } = require("./config");
 const db = require("./db");
 const mailer = require("./mailer");
+const mysqlstore = require("./mysqlstore");
+mysqlstore.init().catch(e => console.error("MySQL init failed (using file fallback):", e.message));
 
 const PORT = process.env.PORT || 3000;
 const GEMINI_KEY = process.env.GEMINI_API_KEY;
@@ -67,7 +69,10 @@ app.use(express.static(path.join(__dirname, "public"), { index: AGENT.voiceEnabl
 
 app.get("/chat", (_req, res) => res.sendFile(path.join(__dirname, "public", "chat.html")));
 app.get("/dashboard", dashboardAuth, (_req, res) => res.sendFile(path.join(__dirname, "public", "dashboard.html")));
-app.get("/api/state", dashboardAuth, (_req, res) => res.json(db.snapshot()));
+app.get("/api/state", dashboardAuth, async (_req, res) => {
+  if (mysqlstore.ENABLED) { try { return res.json(await mysqlstore.loadAll()); } catch(e){ console.error("MySQL load:",e.message); } }
+  res.json(db.snapshot());
+});
 app.get("/api/catalog", (_req, res) => res.json(CATALOG.map(p => ({
   ...p, price: db.preof(p.retail),
 }))));
@@ -94,6 +99,7 @@ app.post("/api/web-order", (req, res) => {
     const rec = db.recordWebOrder({ name, email, phone, order, total });
     broadcast({ type: "preorder", order: rec, channel: "web", at: new Date().toISOString() });
     mailer.emailBuyerConfirmation(rec);
+    mysqlstore.saveReservation(rec).catch(e=>console.error("MySQL save:",e.message));
     res.json({ ok: true, id: rec.id });
   } catch (e) {
     console.error("web-order error:", e.message);
@@ -115,8 +121,8 @@ function runTool(name, args, channel) {
 
   if (result && result._event) {
     broadcast({ ...result._event, channel, at: new Date().toISOString() });
-    if (result._event.type === "preorder") { mailer.emailPreorder(result._event.order); mailer.emailBuyerConfirmation(result._event.order); }
-    else if (result._event.type === "message") mailer.emailMessage(result._event.msg);
+    if (result._event.type === "preorder") { mailer.emailPreorder(result._event.order); mailer.emailBuyerConfirmation(result._event.order); mysqlstore.saveReservation(result._event.order).catch(e=>console.error("MySQL save:",e.message)); }
+    else if (result._event.type === "message") { mailer.emailMessage(result._event.msg); mysqlstore.saveMessage(result._event.msg).catch(e=>console.error("MySQL save:",e.message)); }
     delete result._event;
   }
   return result;
@@ -185,9 +191,11 @@ app.post("/api/chat", async (req, res) => {
 // DASHBOARD WS
 // ===========================================================================
 const wssDash = new WebSocketServer({ noServer: true });
-wssDash.on("connection", (ws) => {
+wssDash.on("connection", async (ws) => {
   dashboardClients.add(ws);
-  ws.send(JSON.stringify({ type: "snapshot", data: db.snapshot(), at: new Date().toISOString() }));
+  let snap = db.snapshot();
+  if (mysqlstore.ENABLED) { try { snap = await mysqlstore.loadAll(); } catch(e){ console.error("MySQL load:",e.message); } }
+  ws.send(JSON.stringify({ type: "snapshot", data: snap, at: new Date().toISOString() }));
   ws.on("close", () => dashboardClients.delete(ws));
 });
 
