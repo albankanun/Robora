@@ -47,12 +47,15 @@
 // is navigated to a logout URL that returns 401, which clears Basic Auth in most browsers.
 function roboraLogout(){
   if(!confirm('Log out of the dashboard?')) return;
-  // Navigate to a URL that will 401 with fresh (empty) credentials embedded,
-  // which clears the browser's stored Basic Auth, then bounce to the site.
-  var u = location.origin.replace('://', '://log:out@');
-  var img = new Image();
-  img.src = u + '/api/state?ts=' + Date.now(); // triggers a 401 with bad creds
-  setTimeout(function(){ window.location.href = 'https://robora.eu/'; }, 400);
+  // Reliable Basic Auth logout: make an authenticated request with WRONG credentials.
+  // The browser replaces its stored good credentials with these bad ones, effectively logging out.
+  var xhr = new XMLHttpRequest();
+  try {
+    xhr.open('GET', '/api/state', false, 'logout', 'logout' + Date.now());
+    xhr.send();
+  } catch(e){}
+  // Then leave the dashboard. Next visit will require the password again.
+  window.location.href = 'https://robora.eu/';
 }
 </script>
 <script>
@@ -97,7 +100,10 @@ function flash(id){ setTimeout(()=>{ const el=document.querySelector('[data-id="
 const proto=location.protocol==='https:'?'wss':'ws';
 let ws;
 function connect(){
-  ws=new WebSocket(`${proto}://${location.host}/ws/dashboard`);
+  // Browsers can't send Basic Auth headers on WebSockets, so pass a token in the URL.
+  // The token is the same user:pass, base64-encoded, that the page is already authenticated with.
+  var tok = (window.ROBORA_WS_TOKEN || '');
+  ws=new WebSocket(`${proto}://${location.host}/ws/dashboard${tok ? '?token='+encodeURIComponent(tok) : ''}`);
   ws.onmessage=ev=>{
     const m=JSON.parse(ev.data);
     if(m.type==='snapshot'){ state=m.data; renderPre(); renderMsg(); }
