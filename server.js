@@ -69,10 +69,19 @@ if (!AGENT.voiceEnabled) {
 } else {
   app.get("/voice", (_req, res) => res.sendFile(path.join(__dirname, "public", "voice.html")));
 }
+app.get("/dashboard.html", (_req, res) => res.redirect("/dashboard"));
 app.use(express.static(path.join(__dirname, "public"), { index: AGENT.voiceEnabled ? "index.html" : false }));
 
 app.get("/chat", (_req, res) => res.sendFile(path.join(__dirname, "public", "chat.html")));
-app.get("/dashboard", dashboardAuth, (_req, res) => res.sendFile(path.join(__dirname, "public", "dashboard.html")));
+app.get("/dashboard", dashboardAuth, (req, res) => {
+  // Inject the auth token so the page's WebSocket can authenticate (browsers can't send Basic Auth on WS).
+  const hdr = req.headers.authorization || "";
+  const token = hdr.split(" ")[1] || "";
+  const fs = require("fs");
+  let html = fs.readFileSync(path.join(__dirname, "public", "dashboard.html"), "utf8");
+  html = html.replace("</head>", `<script>window.ROBORA_WS_TOKEN=${JSON.stringify(token)};</script></head>`);
+  res.type("html").send(html);
+});
 app.get("/api/state", dashboardAuth, async (_req, res) => {
   if (mysqlstore.ENABLED) { try { return res.json(await mysqlstore.loadAll()); } catch(e){ console.error("MySQL load:",e.message); } }
   res.json(db.snapshot());
@@ -260,13 +269,25 @@ server.on("upgrade", (req, socket, head) => {
   } else if (url.startsWith("/ws/dashboard")) {
     const USER = (process.env.DASHBOARD_USER || "").trim(), PASS = (process.env.DASHBOARD_PASS || "").trim();
     if (USER && PASS) {
-      const hdr = req.headers.authorization || "";
-      const [scheme, encoded] = hdr.split(" ");
       let ok = false;
-      if (scheme === "Basic" && encoded) {
-        const decoded = Buffer.from(encoded, "base64").toString();
-        const idx = decoded.indexOf(":");
-        ok = (decoded.slice(0, idx) === USER && decoded.slice(idx + 1) === PASS);
+      // Token from the URL (?token=base64) — used by the browser WebSocket.
+      const m = url.match(/[?&]token=([^&]+)/);
+      if (m) {
+        try {
+          const decoded = Buffer.from(decodeURIComponent(m[1]), "base64").toString();
+          const idx = decoded.indexOf(":");
+          ok = (decoded.slice(0, idx) === USER && decoded.slice(idx + 1) === PASS);
+        } catch {}
+      }
+      // Fallback: Authorization header (non-browser clients)
+      if (!ok) {
+        const hdr = req.headers.authorization || "";
+        const [scheme, encoded] = hdr.split(" ");
+        if (scheme === "Basic" && encoded) {
+          const decoded = Buffer.from(encoded, "base64").toString();
+          const idx = decoded.indexOf(":");
+          ok = (decoded.slice(0, idx) === USER && decoded.slice(idx + 1) === PASS);
+        }
       }
       if (!ok) { socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n"); socket.destroy(); return; }
     }
