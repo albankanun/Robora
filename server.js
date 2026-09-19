@@ -44,12 +44,16 @@ app.use((req, res, next) => {
 
 // --- Dashboard password protection (HTTP Basic Auth) ---
 function dashboardAuth(req, res, next) {
-  const USER = process.env.DASHBOARD_USER, PASS = process.env.DASHBOARD_PASS;
+  const USER = (process.env.DASHBOARD_USER || "").trim();
+  const PASS = (process.env.DASHBOARD_PASS || "").trim();
   if (!USER || !PASS) return next(); // not configured -> open (warning at startup)
   const hdr = req.headers.authorization || "";
   const [scheme, encoded] = hdr.split(" ");
   if (scheme === "Basic" && encoded) {
-    const [u, p] = Buffer.from(encoded, "base64").toString().split(":");
+    const decoded = Buffer.from(encoded, "base64").toString();
+    const idx = decoded.indexOf(":");
+    const u = decoded.slice(0, idx);
+    const p = decoded.slice(idx + 1);   // everything after first colon = password (handles colons in password)
     if (u === USER && p === PASS) return next();
   }
   res.set("WWW-Authenticate", 'Basic realm="Robora Dashboard"');
@@ -254,14 +258,15 @@ server.on("upgrade", (req, socket, head) => {
   if (url.startsWith("/ws/voice")) {
     wssVoice.handleUpgrade(req, socket, head, (ws) => wssVoice.emit("connection", ws, req));
   } else if (url.startsWith("/ws/dashboard")) {
-    const USER = process.env.DASHBOARD_USER, PASS = process.env.DASHBOARD_PASS;
+    const USER = (process.env.DASHBOARD_USER || "").trim(), PASS = (process.env.DASHBOARD_PASS || "").trim();
     if (USER && PASS) {
       const hdr = req.headers.authorization || "";
       const [scheme, encoded] = hdr.split(" ");
       let ok = false;
       if (scheme === "Basic" && encoded) {
-        const [u, p] = Buffer.from(encoded, "base64").toString().split(":");
-        ok = (u === USER && p === PASS);
+        const decoded = Buffer.from(encoded, "base64").toString();
+        const idx = decoded.indexOf(":");
+        ok = (decoded.slice(0, idx) === USER && decoded.slice(idx + 1) === PASS);
       }
       if (!ok) { socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n"); socket.destroy(); return; }
     }
