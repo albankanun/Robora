@@ -43,16 +43,16 @@
     <div class="col"><h2>Messages</h2><div id="messages"></div></div>
   </div>
 <script>
-// Log out of HTTP Basic Auth: hit a URL with bad credentials to clear the cached login, then leave.
+// Log out: send the user away. To fully clear the saved login, the browser
+// is navigated to a logout URL that returns 401, which clears Basic Auth in most browsers.
 function roboraLogout(){
   if(!confirm('Log out of the dashboard?')) return;
-  // Try to overwrite cached credentials, then send the user away.
-  fetch('/dashboard', { headers: { 'Authorization': 'Basic ' + btoa('logout:logout') } })
-    .catch(function(){})
-    .finally(function(){
-      // Redirect to a logged-out page; browser will re-prompt on next dashboard visit.
-      window.location.href = 'https://robora.eu/';
-    });
+  // Navigate to a URL that will 401 with fresh (empty) credentials embedded,
+  // which clears the browser's stored Basic Auth, then bounce to the site.
+  var u = location.origin.replace('://', '://log:out@');
+  var img = new Image();
+  img.src = u + '/api/state?ts=' + Date.now(); // triggers a 401 with bad creds
+  setTimeout(function(){ window.location.href = 'https://robora.eu/'; }, 400);
 }
 </script>
 <script>
