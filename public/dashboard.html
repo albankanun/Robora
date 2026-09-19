@@ -36,11 +36,25 @@
   <header>
     <svg width="26" height="26" viewBox="0 0 52 52"><circle cx="26" cy="26" r="18" fill="none" stroke="var(--cyan)" stroke-width="5.5" stroke-linecap="round" pathLength="100" stroke-dasharray="74 26"/><circle cx="38.3" cy="12.9" r="3.6" fill="var(--cyan)"/></svg>
     <h1>Robora — Staff Dashboard</h1><span class="dot" title="live"></span>
+    <button id="logoutBtn" onclick="roboraLogout()" style="margin-left:auto;background:transparent;border:1px solid var(--line);color:var(--slate);border-radius:999px;padding:8px 16px;font-family:'Space Grotesk',sans-serif;font-size:13px;cursor:pointer">Log out</button>
   </header>
   <div class="wrap">
     <div class="col"><h2>Reservations</h2><div id="preorders"></div></div>
     <div class="col"><h2>Messages</h2><div id="messages"></div></div>
   </div>
+<script>
+// Log out of HTTP Basic Auth: hit a URL with bad credentials to clear the cached login, then leave.
+function roboraLogout(){
+  if(!confirm('Log out of the dashboard?')) return;
+  // Try to overwrite cached credentials, then send the user away.
+  fetch('/dashboard', { headers: { 'Authorization': 'Basic ' + btoa('logout:logout') } })
+    .catch(function(){})
+    .finally(function(){
+      // Redirect to a logged-out page; browser will re-prompt on next dashboard visit.
+      window.location.href = 'https://robora.eu/';
+    });
+}
+</script>
 <script>
 const PRE=document.getElementById('preorders'), MSG=document.getElementById('messages');
 let state={preorders:[],messages:[]};
