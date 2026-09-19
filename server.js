@@ -54,6 +54,7 @@ function dashboardAuth(req, res, next) {
     const idx = decoded.indexOf(":");
     const u = decoded.slice(0, idx);
     const p = decoded.slice(idx + 1);   // everything after first colon = password (handles colons in password)
+    console.log("AUTH DEBUG — typed user:["+u+"] typed pass length:"+p.length+" | expected user:["+USER+"] expected pass length:"+PASS.length+" | user match:"+(u===USER)+" pass match:"+(p===PASS));
     if (u === USER && p === PASS) return next();
   }
   res.set("WWW-Authenticate", 'Basic realm="Robora Dashboard"');
