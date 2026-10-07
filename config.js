@@ -1,7 +1,7 @@
 // ============================================================================
 // ROBORA — VIRTUAL SALES & RESERVATION ASSISTANT CONFIGURATION
-// Shared by the text chat widget (voice is suspended; see AGENT.voiceEnabled).
-// Edit BUSINESS, CATALOG and POLICIES to match reality.
+// Shared by the text chat widget. Edit BUSINESS, CATALOG and POLICIES.
+// Per-product discount: set "discount" on each product (0.20 = 20% off, 0 = none).
 // ============================================================================
 
 const BUSINESS = {
@@ -12,7 +12,6 @@ const BUSINESS = {
   website: "https://robora.eu",
   email: "info@robora.eu",
   address: "Zekeria Cana 13, Prishtinë, Kosovo",
-  preorderDiscount: 0,             // <-- DISCOUNT OFF for now. Set to 0.20 to bring back 20% off.
   deliveryBy: "the end of September",
   noPaymentNow: true,
   freeDeliveryRegions: ["Kosovo", "Albania", "North Macedonia"],
@@ -20,38 +19,39 @@ const BUSINESS = {
 };
 
 // ----------------------------------------------------------------------------
-// PRODUCT CATALOG — prices in EUR. Reservation price = retail * (1 - discount).
+// PRODUCT CATALOG — prices in EUR. "discount" is per-product (0.20 = 20% off).
+// Currently only the two Hutt window robots are discounted.
 // ----------------------------------------------------------------------------
 const CATALOG = [
-  { id: "hutt10", name: "Hutt 10", category: "Window robots", retail: 399,
+  { id: "hutt10", name: "Hutt 10", category: "Window robots", retail: 399, discount: 0.20,
     blurb: "Autonomous window, mirror and glass-door cleaning — wet and dry in a single pass.",
     features: ["One-button operation, no app required", "Smart edge detection and route planning",
                "Cleans windows, mirrors, shower screens and tiles", "Secure suction with anti-drop safety"] },
-  { id: "hutts10", name: "Hutt S10", category: "Window robots", retail: 649,
+  { id: "hutts10", name: "Hutt S10", category: "Window robots", retail: 649, discount: 0.20,
     blurb: "The newest flagship window robot — advanced navigation and coverage for larger windows and facades.",
     features: ["Next-generation path planning for full coverage", "Powerful suction with quiet operation",
                "Ideal for large panes and commercial glass", "Latest 2026 model"] },
-  { id: "t20", name: "Mamibot Robot Vacuum Cleaner T20", category: "Robot vacuums", retail: 749,
+  { id: "t20", name: "Mamibot Robot Vacuum Cleaner T20", category: "Robot vacuums", retail: 749, discount: 0,
     blurb: "Robot vacuum with self-emptying station — vacuums and mops, then empties itself.",
     features: ["Self-empty docking station", "Laser navigation and smart mapping",
                "Vacuum and mop in one run", "Ideal for whole-home cleaning"] },
-  { id: "v12", name: "Mamibot Cordless Stick Vacuum with Self-Empty Station V12", category: "Stick vacuums", retail: 349,
+  { id: "v12", name: "Mamibot Cordless Stick Vacuum with Self-Empty Station V12", category: "Stick vacuums", retail: 349, discount: 0,
     blurb: "Cordless stick vacuum with its own self-empty station — powerful and convenient.",
     features: ["Self-empty charging station", "Strong cordless suction",
                "Lightweight and manoeuvrable", "Great for floors, carpets and stairs"] },
-  { id: "flomo", name: "Mamibot Cordless Steam Floor Washer FLOMO FLAT", category: "Floor washers", retail: 449,
+  { id: "flomo", name: "Mamibot Cordless Steam Floor Washer FLOMO FLAT", category: "Floor washers", retail: 449, discount: 0,
     blurb: "Cordless steam floor washer — washes and steam-cleans hard floors in one pass.",
     features: ["Steam cleaning for hard floors", "Washes and dries as it goes",
                "Cordless freedom, lie-flat design", "Self-cleaning function"] },
-  { id: "dymo", name: "Mamibot Cordless Electric Mop DYMO", category: "Electric mops", retail: 199,
+  { id: "dymo", name: "Mamibot Cordless Electric Mop DYMO", category: "Electric mops", retail: 199, discount: 0,
     blurb: "Cordless electric spin mop — mops, polishes and waxes with spinning pads.",
     features: ["Dual spinning mop pads", "Mop, polish and wax modes",
                "Cordless and lightweight", "Quiet operation"] },
-  { id: "uvlite", name: "Mamibot Cordless UV Dust Mite Cleaner UVLITE200", category: "UV cleaners", retail: 149,
+  { id: "uvlite", name: "Mamibot Cordless UV Dust Mite Cleaner UVLITE200", category: "UV cleaners", retail: 149, discount: 0,
     blurb: "Cordless UV dust-mite cleaner — sanitises mattresses, bedding and sofas.",
     features: ["UV-C sanitisation kills dust mites", "Powerful tapping and suction",
                "Cordless and easy to handle", "For mattresses, bedding and upholstery"] },
-  { id: "sticar", name: "Mamibot Handheld Car Vacuum - Sticar200", category: "Car vacuums", retail: 99,
+  { id: "sticar", name: "Mamibot Handheld Car Vacuum - Sticar200", category: "Car vacuums", retail: 99, discount: 0,
     blurb: "Handheld car vacuum — compact, cordless and strong for cars and tight spaces.",
     features: ["Compact handheld design", "Strong cordless suction",
                "Includes crevice tools", "Perfect for cars and quick clean-ups"] },
@@ -66,38 +66,42 @@ const POLICIES = {
 
 const AGENT = {
   name: "Rina",
-  voiceEnabled: false,             // voice suspended; chat only. true = re-enable voice.
+  voiceEnabled: false,
   voice: "Aoede",
-  model: "gemini-2.5-flash-native-audio-preview-12-2025", // (only used if voice re-enabled)
-  textModel: "gemini-3.6-flash",   // text chat model
+  model: "gemini-2.5-flash-native-audio-preview-12-2025",
+  textModel: "gemini-3.6-flash",
 };
 
 // ----------------------------------------------------------------------------
 // SYSTEM PROMPT
 // ----------------------------------------------------------------------------
-const HAS_DISCOUNT = BUSINESS.preorderDiscount > 0;
 const CATALOG_TEXT = CATALOG.map(p => {
-  const pre = (p.retail * (1 - BUSINESS.preorderDiscount)).toFixed(2);
-  return HAS_DISCOUNT
-    ? `• ${p.name} (${p.category}) — retail €${p.retail}, reservation €${pre} (${BUSINESS.preorderDiscount*100}% off). ${p.blurb}`
-    : `• ${p.name} (${p.category}) — €${p.retail}. ${p.blurb}`;
+  if (p.discount > 0) {
+    const pre = (p.retail * (1 - p.discount)).toFixed(2);
+    return `• ${p.name} (${p.category}) — retail €${p.retail}, reservation €${pre} (${p.discount*100}% off). ${p.blurb}`;
+  }
+  return `• ${p.name} (${p.category}) — €${p.retail} (no discount). ${p.blurb}`;
 }).join("\n");
+
+const DISCOUNTED = CATALOG.filter(p => p.discount > 0).map(p => p.name).join(" and ");
 
 const SYSTEM_PROMPT = `
 You are ${AGENT.name}, the friendly virtual sales assistant for ${BUSINESS.name} (${BUSINESS.legalName}), ${BUSINESS.what}. Your tagline is "${BUSINESS.tagline}".
 
 # YOUR JOB
 Help customers understand the products and place RESERVATIONS. Reservations take NO payment now, and are delivered by ${BUSINESS.deliveryBy}. You confirm the reservation by collecting the customer's details; the team then follows up by email to finalise.
-${HAS_DISCOUNT ? `Reservations currently get ${BUSINESS.preorderDiscount*100}% off retail.` : `Prices are the normal retail prices shown below. There is no special discount right now — do not invent or promise any discount.`}
+
+# DISCOUNTS (IMPORTANT)
+Only ${DISCOUNTED} currently have a 20% discount. ALL OTHER products are at their normal retail price with NO discount. Never promise a discount on a product that doesn't have one — quote the exact prices listed below.
 
 # LANGUAGES
 You are fluent in English, Albanian (Shqip), German (Deutsch) and Italian (Italiano). Detect the language the customer uses and respond in THAT language. If they switch, you switch. Keep the same warmth in every language.
 
 # ALBANIAN TERMINOLOGY (important)
 When speaking Albanian, the word for "reservation/pre-order" is "rezervim" (noun) / "rezervo" (verb) — NEVER "porosi paraprake" or "pre-order". E.g. "Dëshironi ta rezervoni?", "rezervimi juaj".
-For "smart" devices/robots, say "pajisje inteligjente" or "pajisje të mençura" — NEVER "pajisje me mend" (that is wrong Albanian). E.g. "robotë inteligjentë për pastrim".
+For "smart" devices/robots, say "pajisje inteligjente" or "pajisje të mençura" — NEVER "pajisje me mend".
 
-# PRODUCTS
+# PRODUCTS (quote these exact prices)
 ${CATALOG_TEXT}
 
 Coming soon (NOT yet for sale — do not take reservations for these): ${POLICIES.comingSoon.join(", ")}.
@@ -107,7 +111,7 @@ Delivery is FREE to ${BUSINESS.freeDeliveryRegions.join(", ")}. Mention this whe
 
 # HOW TO TAKE A RESERVATION
 1. Help them choose product(s). They can reserve several — capture each product and quantity.
-2. Tell them the price${HAS_DISCOUNT ? " and how much they save" : ""}.
+2. Tell them the price (and, only for the discounted Hutt robots, how much they save).
 3. Collect: full name, email, and phone number. These are required.
 4. Read the reservation back (items, quantities, total) and confirm.
 5. Call the create_preorder tool with everything. Then reassure them the team will email to confirm.

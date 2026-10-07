@@ -1,5 +1,6 @@
 // ============================================================================
 // db.js — Robora assistant data + business logic (JSON-file store)
+// Per-product discount: each product carries its own `discount` (0.20 = 20%).
 // ============================================================================
 const fs = require("fs");
 const path = require("path");
@@ -17,25 +18,34 @@ function save(db) {
   fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
 }
 function newId(prefix) {
-  return prefix + "-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  return prefix + "-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 4);
 }
 
-const DISC = BUSINESS.preorderDiscount;
 const byId = Object.fromEntries(CATALOG.map(p => [p.id, p]));
-function preof(retail) { return +(retail * (1 - DISC)).toFixed(2); }
-function saveof(retail) { return +(retail * DISC).toFixed(2); }
+// Discount is per-product now. preof/saveof normally take the PRODUCT object.
+// For backward-compat they also accept a bare retail number (treated as 0% off),
+// so an older caller like `db.preof(p.retail)` keeps working without crashing.
+function asProduct(x) {
+  if (x && typeof x === "object") return x;                 // full product
+  const byRetail = CATALOG.find(p => p.retail === x);       // recover from a bare number
+  return byRetail || { retail: Number(x) || 0, discount: 0 };
+}
+function discOf(p) { return (p && typeof p.discount === "number") ? p.discount : 0; }
+function preof(x)  { const p = asProduct(x); return +(p.retail * (1 - discOf(p))).toFixed(2); }
+function saveof(x) { const p = asProduct(x); return +(p.retail * discOf(p)).toFixed(2); }
 
 // ---- price lookup -----------------------------------------------------------
 function checkPrice({ product_id, quantity = 1 }) {
   const p = byId[product_id];
   if (!p) return { success: false, message: `Unknown product "${product_id}".` };
   const q = Math.max(1, Math.min(POLICIES.maxQtyPerItem, quantity | 0 || 1));
-  const pre = preof(p.retail);
+  const pre = preof(p);
   return {
     success: true, product: p.name, category: p.category, quantity: q,
+    discounted: discOf(p) > 0, discount_pct: Math.round(discOf(p) * 100),
     retail_each: p.retail, price_each: pre,
     retail_total: +(p.retail * q).toFixed(2), price_total: +(pre * q).toFixed(2),
-    you_save: +(saveof(p.retail) * q).toFixed(2), currency: "EUR",
+    you_save: +(saveof(p) * q).toFixed(2), currency: "EUR",
   };
 }
 
@@ -50,7 +60,7 @@ function createPreorder({ name, email, phone, items, language, note }) {
     const p = byId[it.product_id];
     if (!p) return { success: false, message: `Unknown product "${it.product_id}".` };
     const q = Math.max(1, Math.min(POLICIES.maxQtyPerItem, (it.quantity | 0) || 1));
-    const pre = preof(p.retail);
+    const pre = preof(p);
     lines.push({ product_id: p.id, name: p.name, quantity: q, price_each: pre, line_total: +(pre * q).toFixed(2) });
     retailTotal += p.retail * q; preTotal += pre * q;
   }
